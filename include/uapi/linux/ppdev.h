@@ -74,8 +74,24 @@ struct ppdev_frob_struct {
 #define PPSETPHASE	_IOW(PP_IOCTL, 0x94, int)
 
 /* Set and get port timeout (struct timeval's) */
-#define PPGETTIME	_IOR(PP_IOCTL, 0x95, struct timeval)
-#define PPSETTIME	_IOW(PP_IOCTL, 0x96, struct timeval)
+#ifdef CONFIG_64BIT
+#define PPGETTIME	PPGETTIME64
+#define PPSETTIME	PPSETTIME64
+#define PPGETTIME64	_IOR(PP_IOCTL, 0x95, struct timeval)
+#define PPSETTIME64	_IOW(PP_IOCTL, 0x96, struct timeval)
+#define PPGETTIME32	_IOR(PP_IOCTL, 0x9c, struct compat_timeval)
+#define PPSETTIME32	_IOW(PP_IOCTL, 0x9d, struct compat_timeval)
+#elif defined(CONFIG_COMPAT_TIME)
+#define PPGETTIME	PPGETTIME32
+#define PPSETTIME	PPSETTIME32
+#define PPGETTIME32	_IOR(PP_IOCTL, 0x95, struct compat_timeval)
+#define PPSETTIME32	_IOW(PP_IOCTL, 0x96, struct compat_timeval)
+#else
+#define PPGETTIME	PPGETTIME32
+#define PPSETTIME	PPSETTIME32
+#define PPGETTIME32	_IOR(PP_IOCTL, 0x95, struct timeval)
+#define PPSETTIME32	_IOW(PP_IOCTL, 0x96, struct timeval)
+#endif /* CONFIG_64BIT */
 
 /* Get available modes (what the hardware can do) */
 #define PPGETMODES	_IOR(PP_IOCTL, 0x97, unsigned int)

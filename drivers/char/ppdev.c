@@ -69,6 +69,7 @@
 #include <linux/ppdev.h>
 #include <linux/mutex.h>
 #include <linux/uaccess.h>
+#include <linux/compat.h>
 
 #define PP_VERSION "ppdev: user-space parallel port driver"
 #define CHRDEV "ppdev"
@@ -592,9 +593,17 @@ static int pp_do_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		atomic_sub (ret, &pp->irqc);
 		return 0;
 
-	case PPSETTIME:
-		if (copy_from_user (&par_timeout, argp, sizeof(struct timeval))) {
-			return -EFAULT;
+#ifdef PPSETTIME64
+	case PPSETTIME64:
+#endif /* PPSETTIME64 */
+	case PPSETTIME32:
+		if (!IS_ENABLED(CONFIG_64BIT) || is_compat_task()) {
+			if (compat_get_timeval(&par_timeout, compat_ptr(arg)))
+				return -EFAULT;
+		} else {
+			if (copy_from_user(&par_timeout, argp,
+						sizeof(par_timeout)))
+				return -EFAULT;
 		}
 		/* Convert to jiffies, place in pp->pdev->timeout */
 		if ((par_timeout.tv_sec < 0) || (par_timeout.tv_usec < 0)) {
@@ -608,13 +617,23 @@ static int pp_do_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		pp->pdev->timeout = to_jiffies;
 		return 0;
 
-	case PPGETTIME:
+#ifdef PPGETTIME64
+	case PPGETTIME64:
+#endif /* PPGETTIME64 */
+	case PPGETTIME32:
 		to_jiffies = pp->pdev->timeout;
 		memset(&par_timeout, 0, sizeof(par_timeout));
 		par_timeout.tv_sec = to_jiffies / HZ;
 		par_timeout.tv_usec = (to_jiffies % (long)HZ) * (1000000/HZ);
-		if (copy_to_user (argp, &par_timeout, sizeof(struct timeval)))
 			return -EFAULT;
+		if (!IS_ENABLED(CONFIG_64BIT) || is_compat_task()) {
+			if (compat_put_timeval(&par_timeout, compat_ptr(arg)))
+				return -EFAULT;
+		} else {
+			if (copy_to_user(argp, &par_timeout,
+						sizeof(par_timeout)))
+				return -EFAULT;
+		}
 		return 0;
 
 	default:
@@ -744,6 +763,7 @@ static const struct file_operations pp_fops = {
 	.write		= pp_write,
 	.poll		= pp_poll,
 	.unlocked_ioctl	= pp_ioctl,
+	.compat_ioctl	= pp_ioctl,
 	.open		= pp_open,
 	.release	= pp_release,
 };
