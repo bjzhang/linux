@@ -783,3 +783,34 @@ struct timespec timespec_add_safe(const struct timespec lhs,
 
 	return res;
 }
+
+int get_timeval64(struct timeval64 *tv,
+                  const struct __kernel_timeval __user *utv)
+{
+       struct __kernel_timeval ktv;
+       int ret;
+
+       ret = copy_from_user(&ktv, utv, sizeof(ktv));
+       if (ret)
+               return -EFAULT;
+
+       tv->tv_sec = ktv.tv_sec;
+       if (!IS_ENABLED(CONFIG_64BIT) || is_compat_task())
+               ktv.tv_usec &= 0xfffffffful;
+       tv->tv_usec = ktv.tv_usec;
+
+       return 0;
+}
+EXPORT_SYMBOL_GPL(get_timeval64);
+
+int put_timeval64(const struct timeval64 *tv,
+                  struct __kernel_timeval __user *utv)
+{
+       struct __kernel_timeval ktv = {
+               .tv_sec = tv->tv_sec,
+               .tv_usec = tv->tv_usec
+       };
+       return copy_to_user(utv, &utv, sizeof(ktv)) ? -EFAULT : 0;
+}
+EXPORT_SYMBOL_GPL(put_timeval64);
+

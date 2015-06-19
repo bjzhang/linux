@@ -69,6 +69,7 @@
 #include <linux/ppdev.h>
 #include <linux/mutex.h>
 #include <linux/uaccess.h>
+#include <linux/compat.h>
 
 #define PP_VERSION "ppdev: user-space parallel port driver"
 #define CHRDEV "ppdev"
@@ -496,8 +497,9 @@ static int pp_do_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		unsigned char mask;
 		int mode;
 		int ret;
-		struct timeval par_timeout;
+		struct timeval64 par_timeout;
 		long to_jiffies;
+		int is_not_compat_timeval = 0;
 
 	case PPRSTATUS:
 		reg = parport_read_status (port);
@@ -592,9 +594,17 @@ static int pp_do_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		atomic_sub (ret, &pp->irqc);
 		return 0;
 
-	case PPSETTIME:
-		if (copy_from_user (&par_timeout, argp, sizeof(struct timeval))) {
-			return -EFAULT;
+	case PPSETTIME64:
+		is_not_compat_timeval = 1;
+	case PPSETTIME32:
+		if (is_not_compat_timeval) {
+			if (get_timeval64(&par_timeout, argp)) {
+				return -EFAULT;
+			}
+		} else {
+			if (compat_get_timeval64(&par_timeout, argp)) {
+				return -EFAULT;
+			}
 		}
 		/* Convert to jiffies, place in pp->pdev->timeout */
 		if ((par_timeout.tv_sec < 0) || (par_timeout.tv_usec < 0)) {
@@ -608,13 +618,22 @@ static int pp_do_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		pp->pdev->timeout = to_jiffies;
 		return 0;
 
-	case PPGETTIME:
+	case PPGETTIME64:
+		is_not_compat_timeval = 1;
+	case PPGETTIME32:
 		to_jiffies = pp->pdev->timeout;
 		memset(&par_timeout, 0, sizeof(par_timeout));
 		par_timeout.tv_sec = to_jiffies / HZ;
 		par_timeout.tv_usec = (to_jiffies % (long)HZ) * (1000000/HZ);
-		if (copy_to_user (argp, &par_timeout, sizeof(struct timeval)))
-			return -EFAULT;
+		if (is_not_compat_timeval) {
+			if (put_timeval64(&par_timeout, argp)) {
+				return -EFAULT;
+			}
+		} else {
+			if (compat_put_timeval64(&par_timeout, argp)) {
+				return -EFAULT;
+			}
+		}
 		return 0;
 
 	default:
@@ -633,6 +652,11 @@ static long pp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	ret = pp_do_ioctl(file, cmd, arg);
 	mutex_unlock(&pp_do_mutex);
 	return ret;
+}
+
+static long pp_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+{
+	return pp_do_ioctl(file, cmd, (unsigned long)compat_ptr(arg));
 }
 
 static int pp_open (struct inode * inode, struct file * file)
@@ -744,6 +768,7 @@ static const struct file_operations pp_fops = {
 	.write		= pp_write,
 	.poll		= pp_poll,
 	.unlocked_ioctl	= pp_ioctl,
+	.compat_ioctl	= pp_compat_ioctl,
 	.open		= pp_open,
 	.release	= pp_release,
 };

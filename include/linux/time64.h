@@ -1,9 +1,11 @@
 #ifndef _LINUX_TIME64_H
 #define _LINUX_TIME64_H
 
-#include <uapi/linux/time.h>
-
 typedef __s64 time64_t;
+
+#ifndef CONFIG_COMPAT_TIME
+# define __kernel_timeval timeval
+#endif
 
 /*
  * This wants to go into uapi/linux/time.h once we agreed about the
@@ -11,12 +13,21 @@ typedef __s64 time64_t;
  */
 #if __BITS_PER_LONG == 64
 # define timespec64 timespec
+# define timeval64 timeval
 #else
+
+struct timeval64 {
+	time64_t		tv_sec;		/* seconds */
+	__kernel_suseconds_t	tv_usec;	/* microseconds */
+};
+
 struct timespec64 {
 	time64_t	tv_sec;			/* seconds */
 	long		tv_nsec;		/* nanoseconds */
 };
 #endif
+
+#include <uapi/linux/time.h>
 
 /* Parameters used to convert the timespec values: */
 #define MSEC_PER_SEC	1000L
@@ -186,5 +197,10 @@ static __always_inline void timespec64_add_ns(struct timespec64 *a, u64 ns)
 }
 
 #endif
+
+extern int get_timeval64(struct timeval64 *tv,
+                         const struct __kernel_timeval __user *utv);
+extern int put_timeval64(const struct timeval64 *tv,
+                         struct __kernel_timeval __user *utv);
 
 #endif /* _LINUX_TIME64_H */
