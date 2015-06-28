@@ -74,8 +74,18 @@ struct ppdev_frob_struct {
 #define PPSETPHASE	_IOW(PP_IOCTL, 0x94, int)
 
 /* Set and get port timeout (struct timeval's) */
-#define PPGETTIME	_IOR(PP_IOCTL, 0x95, struct timeval)
-#define PPSETTIME	_IOW(PP_IOCTL, 0x96, struct timeval)
+/* Force application use 64 time_t ioctl */
+/* TODO: It is an open question about we should use a __xxx_timeval or an
+ * implicit array.
+ * replace struct __kernel_timeval with __s32[4]
+ * replace struct compat_timeval with __s32[2]
+ */
+#define PPGETTIME	PPGETTIME64
+#define PPSETTIME	PPSETTIME64
+#define PPGETTIME64	_IOR(PP_IOCTL, 0x95, struct __kernel_timeval)
+#define PPSETTIME64	_IOW(PP_IOCTL, 0x96, struct __kernel_timeval)
+#define PPGETTIME32	_IOR(PP_IOCTL, 0x9c, struct __kernel_compat_timeval)
+#define PPSETTIME32	_IOW(PP_IOCTL, 0x9d, struct __kernel_compat_timeval)
 
 /* Get available modes (what the hardware can do) */
 #define PPGETMODES	_IOR(PP_IOCTL, 0x97, unsigned int)
