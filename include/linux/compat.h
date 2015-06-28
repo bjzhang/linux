@@ -154,6 +154,9 @@ extern int compat_get_timespec(struct timespec *, const void __user *);
 extern int compat_put_timespec(const struct timespec *, void __user *);
 extern int compat_get_timeval(struct timeval *, const void __user *);
 extern int compat_put_timeval(const struct timeval *, void __user *);
+struct timeval64;
+extern int compat_get_timeval64(struct timeval64 *tv, const struct compat_timeval __user *ctv);
+extern int compat_put_timeval64(const struct timeval64 *tv, struct compat_timeval __user *ctv);
 
 /*
  * This function convert a timespec if necessary and returns a *user

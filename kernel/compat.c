@@ -172,6 +172,23 @@ int compat_put_timeval(const struct timeval *tv, void __user *utv)
 }
 EXPORT_SYMBOL_GPL(compat_put_timeval);
 
+int compat_get_timeval64(struct timeval64 *tv, const struct compat_timeval __user *ctv)
+{
+	return (!access_ok(VERIFY_READ, ctv, sizeof(*ctv)) ||
+			__get_user(tv->tv_sec, &ctv->tv_sec) ||
+			__get_user(tv->tv_usec, &ctv->tv_usec)) ? -EFAULT : 0;
+}
+EXPORT_SYMBOL_GPL(compat_get_timeval64);
+
+/* TODO: is it ok that just put to user without implicit cast? */
+int compat_put_timeval64(const struct timeval64 *tv, struct compat_timeval *ctv)
+{
+	return (!access_ok(VERIFY_WRITE, ctv, sizeof(*ctv)) ||
+			__put_user(tv->tv_sec, &ctv->tv_sec) ||
+			__put_user(tv->tv_usec, &ctv->tv_usec)) ? -EFAULT : 0;
+}
+EXPORT_SYMBOL_GPL(compat_put_timeval64);
+
 int compat_get_timespec(struct timespec *ts, const void __user *uts)
 {
 	if (COMPAT_USE_64BIT_TIME)

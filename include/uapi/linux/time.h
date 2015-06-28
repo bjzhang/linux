@@ -76,4 +76,10 @@ struct __kernel_timeval {
 };
 #endif
 
+typedef __s32 __kernel_time32_t;
+struct __kernel_compat_timeval {
+       __kernel_time32_t       tv_sec;
+       __s32                   tv_usec;
+};
+
 #endif /* _UAPI_LINUX_TIME_H */
