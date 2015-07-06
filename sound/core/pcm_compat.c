@@ -183,6 +183,25 @@ static int snd_pcm_ioctl_channel_info_compat(struct snd_pcm_substream *substream
 	return err;
 }
 
+#ifdef COMPAT_USE_64BIT_TIME
+struct snd_pcm_status32 {
+	s32 state;
+	struct __kernel_timespec trigger_tstamp;
+	struct __kernel_timespec tstamp;
+	u32 appl_ptr;
+	u32 hw_ptr;
+	s32 delay;
+	u32 avail;
+	u32 avail_max;
+	u32 overrange;
+	s32 suspended_state;
+	u32 audio_tstamp_data;
+	struct __kernel_timespec audio_tstamp;
+	struct __kernel_timespec driver_tstamp;
+	u32 audio_tstamp_accuracy;
+	unsigned char reserved[52-2*sizeof(struct __kernel_timespec)];
+} __attribute__((packed));
+#else
 struct snd_pcm_status32 {
 	s32 state;
 	struct compat_timespec trigger_tstamp;
@@ -200,6 +219,7 @@ struct snd_pcm_status32 {
 	u32 audio_tstamp_accuracy;
 	unsigned char reserved[52-2*sizeof(struct compat_timespec)];
 } __attribute__((packed));
+#endif /* COMPAT_USE_64BIT_TIME */
 
 
 static int snd_pcm_status_user_compat(struct snd_pcm_substream *substream,

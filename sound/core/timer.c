@@ -70,7 +70,7 @@ struct snd_timer_user {
 	spinlock_t qlock;
 	unsigned long last_resolution;
 	unsigned int filter;
-	struct timespec tstamp;		/* trigger tstamp */
+	struct timespec64 tstamp;		/* trigger tstamp */
 	wait_queue_head_t qchange_sleep;
 	struct fasync_struct *fasync;
 	struct mutex tread_sem;
@@ -387,12 +387,12 @@ static void snd_timer_notify1(struct snd_timer_instance *ti, int event)
 	unsigned long flags;
 	unsigned long resolution = 0;
 	struct snd_timer_instance *ts;
-	struct timespec tstamp;
+	struct timespec64 tstamp;
 
 	if (timer_tstamp_monotonic)
-		ktime_get_ts(&tstamp);
+		ktime_get_ts64(&tstamp);
 	else
-		getnstimeofday(&tstamp);
+		getnstimeofday64(&tstamp);
 	if (snd_BUG_ON(event < SNDRV_TIMER_EVENT_START ||
 		       event > SNDRV_TIMER_EVENT_PAUSE))
 		return;
@@ -428,7 +428,7 @@ static int snd_timer_start1(struct snd_timer *timer, struct snd_timer_instance *
 	} else {
 		timer->sticks = sticks;
 		timer->hw.start(timer);
-	      __start_now:
+__start_now:
 		timer->running++;
 		timeri->flags |= SNDRV_TIMER_IFLG_RUNNING;
 		return 0;
@@ -515,7 +515,7 @@ static int _snd_timer_stop(struct snd_timer_instance * timeri,
 		timeri->flags &=
 			~(SNDRV_TIMER_IFLG_RUNNING | SNDRV_TIMER_IFLG_START);
 	spin_unlock_irqrestore(&timer->lock, flags);
-      __end:
+__end:
 	if (event != SNDRV_TIMER_EVENT_RESOLUTION)
 		snd_timer_notify1(timeri, event);
 	return 0;
@@ -843,7 +843,7 @@ static int snd_timer_dev_register(struct snd_device *dev)
 		return -ENXIO;
 	if (!(timer->hw.flags & SNDRV_TIMER_HW_SLAVE) &&
 	    !timer->hw.resolution && timer->hw.c_resolution == NULL)
-	    	return -EINVAL;
+		return -EINVAL;
 
 	mutex_lock(&register_mutex);
 	list_for_each_entry(timer1, &snd_timer_list, device_list) {
@@ -883,7 +883,7 @@ static int snd_timer_dev_disconnect(struct snd_device *device)
 	return 0;
 }
 
-void snd_timer_notify(struct snd_timer *timer, int event, struct timespec *tstamp)
+void snd_timer_notify(struct snd_timer *timer, int event, struct timespec64 *tstamp)
 {
 	unsigned long flags;
 	unsigned long resolution = 0;
@@ -1159,7 +1159,7 @@ static void snd_timer_user_append_to_tqueue(struct snd_timer_user *tu,
 
 static void snd_timer_user_ccallback(struct snd_timer_instance *timeri,
 				     int event,
-				     struct timespec *tstamp,
+				     struct timespec64 *tstamp,
 				     unsigned long resolution)
 {
 	struct snd_timer_user *tu = timeri->callback_data;
@@ -1187,7 +1187,7 @@ static void snd_timer_user_tinterrupt(struct snd_timer_instance *timeri,
 {
 	struct snd_timer_user *tu = timeri->callback_data;
 	struct snd_timer_tread *r, r1;
-	struct timespec tstamp;
+	struct timespec64 tstamp;
 	int prev, append = 0;
 
 	memset(&tstamp, 0, sizeof(tstamp));
@@ -1199,9 +1199,9 @@ static void snd_timer_user_tinterrupt(struct snd_timer_instance *timeri,
 	}
 	if (tu->last_resolution != resolution || ticks > 0) {
 		if (timer_tstamp_monotonic)
-			ktime_get_ts(&tstamp);
+			ktime_get_ts64(&tstamp);
 		else
-			getnstimeofday(&tstamp);
+			getnstimeofday64(&tstamp);
 	}
 	if ((tu->filter & (1 << SNDRV_TIMER_EVENT_RESOLUTION)) &&
 	    tu->last_resolution != resolution) {
@@ -1231,7 +1231,7 @@ static void snd_timer_user_tinterrupt(struct snd_timer_instance *timeri,
 	r1.val = ticks;
 	snd_timer_user_append_to_tqueue(tu, &r1);
 	append++;
-      __wake:
+__wake:
 	spin_unlock(&tu->qlock);
 	if (append == 0)
 		return;
@@ -1544,10 +1544,10 @@ static int snd_timer_user_tselect(struct file *file,
 			err = -ENOMEM;
 	}
 
-      	if (err < 0) {
+	if (err < 0) {
 		snd_timer_close(tu->timeri);
-      		tu->timeri = NULL;
-      	} else {
+		tu->timeri = NULL;
+	} else {
 		tu->timeri->flags |= SNDRV_TIMER_IFLG_FAST;
 		tu->timeri->callback = tu->tread
 			? snd_timer_user_tinterrupt : snd_timer_user_interrupt;
@@ -1555,8 +1555,8 @@ static int snd_timer_user_tselect(struct file *file,
 		tu->timeri->callback_data = (void *)tu;
 	}
 
-      __err:
-      	mutex_unlock(&tu->tread_sem);
+__err:
+	mutex_unlock(&tu->tread_sem);
 	return err;
 }
 
@@ -1837,15 +1837,21 @@ static int snd_timer_user_fasync(int fd, struct file * file, int on)
 	return fasync_helper(fd, file, on, &tu->fasync);
 }
 
+/*
+ * both count and result is the count for userspace, So, It should be counted by
+ * __kernel_timespec.
+ */
 static ssize_t snd_timer_user_read(struct file *file, char __user *buffer,
 				   size_t count, loff_t *offset)
 {
 	struct snd_timer_user *tu;
 	long result = 0, unit;
 	int err = 0;
+	__kernel_snd_timer_tread kttr;
+	snd_timer_tread *ttrp;
 
 	tu = file->private_data;
-	unit = tu->tread ? sizeof(struct snd_timer_tread) : sizeof(struct snd_timer_read);
+	unit = tu->tread ? sizeof(struct __kernel_snd_timer_tread) : sizeof(struct snd_timer_read);
 	spin_lock_irq(&tu->qlock);
 	while ((long)count - result >= unit) {
 		while (!tu->qused) {
@@ -1877,8 +1883,17 @@ static ssize_t snd_timer_user_read(struct file *file, char __user *buffer,
 			goto _error;
 
 		if (tu->tread) {
-			if (copy_to_user(buffer, &tu->tqueue[tu->qhead++],
-					 sizeof(struct snd_timer_tread))) {
+			ttrp = &tu->tqueue[tu->qhead++];
+			if ( sizeof(kttr) == sizeof(*ttr) ) {
+				&kttr = ttr;
+			} else {
+				kttr.event = ttrp->event;
+				kttr.tstamp.tv_sec = ttrp->tstamp.tv_sec;
+				kttr.tstamp.tv_nsec = ttrp->tstamp.tv_nsec;
+				kttr.val = ttrp->val;
+			}
+			if (copy_to_user(buffer, &kttr,
+					 sizeof(struct __kernel_snd_timer_tread))) {
 				err = -EFAULT;
 				goto _error;
 			}
@@ -1899,7 +1914,7 @@ static ssize_t snd_timer_user_read(struct file *file, char __user *buffer,
 		tu->qused--;
 	}
 	spin_unlock_irq(&tu->qlock);
- _error:
+_error:
 	return result > 0 ? result : err;
 }
 

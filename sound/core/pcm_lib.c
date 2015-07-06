@@ -175,7 +175,7 @@ static void xrun(struct snd_pcm_substream *substream)
 
 	trace_xrun(substream);
 	if (runtime->tstamp_mode == SNDRV_PCM_TSTAMP_ENABLE)
-		snd_pcm_gettime(runtime, (struct timespec *)&runtime->status->tstamp);
+		snd_pcm_gettime(runtime, (struct timespec64 *)&runtime->status->tstamp);
 	snd_pcm_stop(substream, SNDRV_PCM_STATE_XRUN);
 	if (xrun_debug(substream, XRUN_DEBUG_BASIC)) {
 		char name[16];

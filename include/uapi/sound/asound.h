@@ -436,8 +436,8 @@ enum {
 
 struct snd_pcm_status {
 	snd_pcm_state_t state;		/* stream state */
-	struct timespec trigger_tstamp;	/* time when stream was started/stopped/paused */
-	struct timespec tstamp;		/* reference timestamp */
+	struct __kernel_timespec trigger_tstamp;	/* time when stream was started/stopped/paused */
+	struct __kernel_timespec tstamp;		/* reference timestamp */
 	snd_pcm_uframes_t appl_ptr;	/* appl ptr */
 	snd_pcm_uframes_t hw_ptr;	/* hw ptr */
 	snd_pcm_sframes_t delay;	/* current delay in frames */
@@ -446,19 +446,19 @@ struct snd_pcm_status {
 	snd_pcm_uframes_t overrange;	/* count of ADC (capture) overrange detections from last status */
 	snd_pcm_state_t suspended_state; /* suspended stream state */
 	__u32 audio_tstamp_data;	 /* needed for 64-bit alignment, used for configs/report to/from userspace */
-	struct timespec audio_tstamp;	/* sample counter, wall clock, PHC or on-demand sync'ed */
-	struct timespec driver_tstamp;	/* useful in case reference system tstamp is reported with delay */
+	struct __kernel_timespec audio_tstamp;	/* sample counter, wall clock, PHC or on-demand sync'ed */
+	struct __kernel_timespec driver_tstamp;	/* useful in case reference system tstamp is reported with delay */
 	__u32 audio_tstamp_accuracy;	/* in ns units, only valid if indicated in audio_tstamp_data */
-	unsigned char reserved[52-2*sizeof(struct timespec)]; /* must be filled with zero */
+	unsigned char reserved[52-2*sizeof(struct __kernel_timespec)]; /* must be filled with zero */
 };
 
 struct snd_pcm_mmap_status {
 	snd_pcm_state_t state;		/* RO: state - SNDRV_PCM_STATE_XXXX */
 	int pad1;			/* Needed for 64 bit alignment */
 	snd_pcm_uframes_t hw_ptr;	/* RO: hw ptr (0...boundary-1) */
-	struct timespec tstamp;		/* Timestamp */
+	struct __kernel_timespec tstamp;		/* Timestamp */
 	snd_pcm_state_t suspended_state; /* RO: suspended stream state */
-	struct timespec audio_tstamp;	/* from sample counter or wall clock */
+	struct __kernel_timespec audio_tstamp;	/* from sample counter or wall clock */
 };
 
 struct snd_pcm_mmap_control {
@@ -627,7 +627,7 @@ struct snd_rawmidi_params {
 
 struct snd_rawmidi_status {
 	int stream;
-	struct timespec tstamp;		/* Timestamp */
+	struct __kernel_timespec tstamp;		/* Timestamp */
 	size_t avail;			/* available bytes */
 	size_t xruns;			/* count of overruns since last status (in bytes) */
 	unsigned char reserved[16];	/* reserved for future use */
@@ -739,7 +739,7 @@ struct snd_timer_params {
 };
 
 struct snd_timer_status {
-	struct timespec tstamp;		/* Timestamp - last update */
+	struct __kernel_timespec tstamp;/* Timestamp - last update */
 	unsigned int resolution;	/* current period resolution in ns */
 	unsigned int lost;		/* counter of master tick lost */
 	unsigned int overrun;		/* count of read queue overruns */
@@ -787,9 +787,9 @@ enum {
 	SNDRV_TIMER_EVENT_MRESUME = SNDRV_TIMER_EVENT_RESUME + 10,
 };
 
-struct snd_timer_tread {
+struct __kernel_snd_timer_tread {
 	int event;
-	struct timespec tstamp;
+	struct __kernel_timespec tstamp;
 	unsigned int val;
 };
 
@@ -932,8 +932,8 @@ struct snd_ctl_elem_value {
 		} bytes;
 		struct snd_aes_iec958 iec958;
 	} value;		/* RO */
-	struct timespec tstamp;
-	unsigned char reserved[128-sizeof(struct timespec)];
+	struct __kernel_timespec tstamp;
+	unsigned char reserved[128-sizeof(struct __kernel_timespec)];
 };
 
 struct snd_ctl_tlv {

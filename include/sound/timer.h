@@ -102,7 +102,7 @@ struct snd_timer_instance {
 			  unsigned long ticks, unsigned long resolution);
 	void (*ccallback) (struct snd_timer_instance * timeri,
 			   int event,
-			   struct timespec * tstamp,
+			   struct timespec64 * tstamp,
 			   unsigned long resolution);
 	void *callback_data;
 	unsigned long ticks;		/* auto-load ticks when expired */
@@ -120,12 +120,18 @@ struct snd_timer_instance {
 	struct snd_timer_instance *master;
 };
 
+struct snd_timer_tread {
+	int event;
+	struct timespec64 tstamp;
+	unsigned int val;
+};
+
 /*
  *  Registering
  */
 
 int snd_timer_new(struct snd_card *card, char *id, struct snd_timer_id *tid, struct snd_timer **rtimer);
-void snd_timer_notify(struct snd_timer *timer, int event, struct timespec *tstamp);
+void snd_timer_notify(struct snd_timer *timer, int event, struct timespec64 *tstamp);
 int snd_timer_global_new(char *id, int device, struct snd_timer **rtimer);
 int snd_timer_global_free(struct snd_timer *timer);
 int snd_timer_global_register(struct snd_timer *timer);
