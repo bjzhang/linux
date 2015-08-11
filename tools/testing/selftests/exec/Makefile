@@ -18,11 +18,16 @@ execveat.denatured: execveat
 	$(CC) $(CFLAGS) -o $@ $^
 
 TEST_PROGS := execveat
-TEST_FILES := $(DEPS)
 
 include ../lib.mk
 
 override EMIT_TESTS := echo "mkdir -p subdir; (./execveat && echo \"selftests: execveat [PASS]\") || echo \"selftests: execveat [FAIL]\""
+
+override define INSTALL_RULE
+       mkdir -p $(INSTALL_PATH)
+       install -t $(INSTALL_PATH) $(TEST_PROGS) $(TEST_PROGS_EXTENDED) $(TEST_FILES)
+       cp -a execveat.symlink execveat.denatured $(INSTALL_PATH)
+endef
 
 clean:
 	rm -rf $(BINARIES) $(DEPS) subdir.moved execveat.moved xxxxx*
