@@ -1,5 +1,12 @@
 # Makefile for vm selftests
 
+ifeq ($(ARCH),powerpc)
+support_userfaultfd = yes
+endif
+ifeq ($(ARCH),x86)
+support_userfaultfd = yes
+endif
+
 CFLAGS = -Wall
 BINARIES = compaction_test
 BINARIES += hugepage-mmap
@@ -9,7 +16,9 @@ BINARIES += mlock2-tests
 BINARIES += on-fault-limit
 BINARIES += thuge-gen
 BINARIES += transhuge-stress
+ifdef support_userfaultfd
 BINARIES += userfaultfd
+endif
 
 all: $(BINARIES)
 %: %.c
