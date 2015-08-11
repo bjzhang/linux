@@ -1,5 +1,15 @@
 # This mimics the top-level Makefile. We do it explicitly here so that this
 # Makefile can operate with or without the kbuild infrastructure.
+
+# ARCH can be overridden by the user for cross compiling
+ARCH ?= $(shell uname -m)
+ARCH := $(shell echo $(ARCH) | sed -e s/i.86/x86/ -e s/x86_64/x86/ \
+				   -e s/sun4u/sparc64/ \
+				   -e s/arm.*/arm/ -e s/sa110/arm/ \
+				   -e s/s390x/s390/ -e s/parisc64/parisc/ \
+				   -e s/ppc.*/powerpc/ -e s/mips.*/mips/ \
+				   -e s/sh[234].*/sh/ -e s/aarch64.*/arm64/ )
+
 CC := $(CROSS_COMPILE)gcc
 
 CFLAGS += $(CFLAGS_EXTRA)

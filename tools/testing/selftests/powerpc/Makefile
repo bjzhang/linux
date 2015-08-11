@@ -1,9 +1,5 @@
 # Makefile for powerpc selftests
 
-# ARCH can be overridden by the user for cross compiling
-ARCH ?= $(shell uname -m)
-ARCH := $(shell echo $(ARCH) | sed -e s/ppc.*/powerpc/)
-
 ifeq ($(ARCH),powerpc)
 
 GIT_VERSION = $(shell git describe --always --long --dirty || echo "unknown")
