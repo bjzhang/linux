@@ -21,7 +21,6 @@ ifneq (1, $(quicktest))
 TARGETS += timers
 endif
 TARGETS += user
-TARGETS += jumplabel
 TARGETS += vm
 TARGETS += x86
 #Please keep the TARGETS list alphabetically sorted
