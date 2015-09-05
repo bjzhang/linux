@@ -1,8 +1,7 @@
 CFLAGS += -O2
+LDLIBS = -lrt -lpthread -lpopt
 
-all:
-	$(CC) $(CFLAGS) mq_open_tests.c -o mq_open_tests -lrt
-	$(CC) $(CFLAGS) -o mq_perf_tests mq_perf_tests.c -lrt -lpthread -lpopt
+all: mq_open_tests mq_perf_tests
 
 include ../lib.mk
 
