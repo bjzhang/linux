@@ -277,6 +277,14 @@ config GPIO_MM_LANTIQ
 	  (EBU) found on Lantiq SoCs. The gpios are output only as they are
 	  created by attaching a 16bit latch to the bus.
 
+config GPIO_MOCKUP
+       tristate "GPIO Testing Driver"
+       depends on GPIOLIB
+       help
+         Say Y here to enable GPIO Testing driver, which provides a way to
+         test GPIO subsystem from userspace.
+         If unsure, say N here.
+
 config GPIO_MOXART
 	bool "MOXART GPIO support"
 	depends on ARCH_MOXART

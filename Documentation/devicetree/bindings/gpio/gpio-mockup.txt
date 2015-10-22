@@ -1,0 +1,13 @@
+GPIO Mockup driver bindings
+
+Required properties:
+- compatible: should be "gpio-mockup"
+- gpio-controller: Marks the device as a GPIO controller
+
+Example:
+       gpio: mockup{
+               compatible = "gpio-mockup";
+               gpio-controller;
+       };
+
+
