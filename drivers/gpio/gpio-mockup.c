@@ -104,7 +104,7 @@ int mockup_gpio_add(struct device *dev, struct mockup_gpio_controller *cntr,
 	cntr->stats = devm_kzalloc(dev, sizeof(*cntr->stats) * cntr->gc.ngpio,
 			GFP_KERNEL);
 	if (!cntr->stats) {
-		err = -ENOMEM;
+		ret = -ENOMEM;
 		goto err;
 	}
 	ret = gpiochip_add(&cntr->gc);
@@ -115,7 +115,7 @@ int mockup_gpio_add(struct device *dev, struct mockup_gpio_controller *cntr,
 	return 0;
 err:
 	dev_err(dev, "gpio<%d..%d> add failed!", base, base + ngpio);
-	return err;
+	return ret;
 }
 
 static int
