@@ -196,6 +196,13 @@ static int gpiochip_add_to_list(struct gpio_chip *chip)
 	/* find where to insert our chip */
 	list_for_each(pos, &gpio_chips) {
 		_chip = list_entry(pos, struct gpio_chip, list);
+		if (_chip->base == chip->base) {
+			dev_err(chip->dev,
+			       "GPIO base overlap<%d>, cannot add chip\n",
+			       chip->base);
+			err = -EBUSY;
+			goto err;
+		}
 		/* shall we insert before _chip? */
 		if (_chip->base >= chip->base + chip->ngpio)
 			break;
@@ -214,6 +221,7 @@ static int gpiochip_add_to_list(struct gpio_chip *chip)
 	if (!err)
 		list_add_tail(&chip->list, pos);
 
+err:
 	return err;
 }
 
