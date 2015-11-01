@@ -327,6 +327,9 @@ int gpiochip_add(struct gpio_chip *chip)
 	if (!descs)
 		return -ENOMEM;
 
+	if (chip->ngpio == 0)
+		return -EINVAL;
+
 	spin_lock_irqsave(&gpio_lock, flags);
 
 	if (base < 0) {
