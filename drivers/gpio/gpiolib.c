@@ -191,29 +191,48 @@ static int gpiochip_add_to_list(struct gpio_chip *chip)
 {
 	struct list_head *pos;
 	struct gpio_chip *_chip;
+	struct gpio_chip *_chip_prev = NULL;
 	int err = 0;
 
-	/* find where to insert our chip */
+	if (list_empty(&gpio_chips)) {
+		pos = gpio_chips.next;
+		goto found;
+	}
+
 	list_for_each(pos, &gpio_chips) {
 		_chip = list_entry(pos, struct gpio_chip, list);
-		/* shall we insert before _chip? */
-		if (_chip->base >= chip->base + chip->ngpio)
-			break;
-	}
-
-	/* are we stepping on the chip right before? */
-	if (pos != &gpio_chips && pos->prev != &gpio_chips) {
-		_chip = list_entry(pos->prev, struct gpio_chip, list);
-		if (_chip->base + _chip->ngpio > chip->base) {
+		if (_chip->base == chip->base) {
 			dev_err(chip->dev,
-			       "GPIO integer space overlap, cannot add chip\n");
+			       "GPIO base overlap<%d>, cannot add chip\n",
+			       chip->base);
 			err = -EBUSY;
+			goto err;
 		}
+		if (_chip->base >= chip->base + chip->ngpio) {
+			/* we are the before the first existence gpio*/
+			if (pos->prev == &gpio_chips) {
+				goto found;
+			} else {
+				if (_chip_prev->base + _chip_prev->ngpio
+						<= chip->base)
+					goto found;
+			}
+		}
+		_chip_prev = _chip;
 	}
+	if (_chip->base + _chip->ngpio <= chip->base)
+		goto found;
 
+	dev_err(chip->dev,
+	       "GPIO integer space overlap, cannot add chip\n");
+	err = -EBUSY;
+	goto err;
+
+found:
 	if (!err)
 		list_add_tail(&chip->list, pos);
 
+err:
 	return err;
 }
 
