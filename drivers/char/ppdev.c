@@ -98,6 +98,13 @@ struct pp_struct {
 #define ROUND_UP(x,y) (((x)+(y)-1)/(y))
 
 static DEFINE_MUTEX(pp_do_mutex);
+
+/* define fixed sized ioctl cmd for y2038 migration */
+#define PPGETTIME_unsafe	_IOR(PP_IOCTL, 0x95, s32[2])
+#define PPSETTIME_unsafe	_IOW(PP_IOCTL, 0x96, s32[2])
+#define PPGETTIME_safe		_IOR(PP_IOCTL, 0x95, s64[2])
+#define PPSETTIME_safe		_IOW(PP_IOCTL, 0x96, s64[2])
+
 static inline void pp_enable_irq (struct pp_struct *pp)
 {
 	struct parport *port = pp->pdev->port;
@@ -322,6 +329,32 @@ static enum ieee1284_phase init_phase (int mode)
 	return IEEE1284_PH_FWD_IDLE;
 }
 
+static int pp_set_timeout(struct pardevice *pdev, __kernel_time_t tv_sec,
+		__kernel_suseconds_t tv_usec)
+{
+	long to_jiffies;
+
+	if ((tv_sec < 0) || (tv_usec < 0))
+		return -EINVAL;
+
+	to_jiffies = usecs_to_jiffies(tv_usec);
+	to_jiffies += tv_sec * (long)HZ;
+	if (to_jiffies <= 0)
+		return -EINVAL;
+
+	pdev->timeout = to_jiffies;
+	return 0;
+}
+
+static void pp_get_timeout(struct pardevice *pdev, s64 *tv_sec, s64 *tv_usec)
+{
+	u32 rem;
+
+	*tv_sec = div_u64_rem((u64)(pdev->timeout) * TICK_USEC,
+			USEC_PER_SEC, &rem);
+	*tv_usec = rem;
+}
+
 static int pp_do_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	unsigned int minor = iminor(file_inode(file));
@@ -495,9 +528,9 @@ static int pp_do_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		unsigned char reg;
 		unsigned char mask;
 		int mode;
+		s32 time32[2];
+		s64 time64[2];
 		int ret;
-		struct timeval par_timeout;
-		long to_jiffies;
 
 	case PPRSTATUS:
 		reg = parport_read_status (port);
@@ -592,29 +625,36 @@ static int pp_do_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		atomic_sub (ret, &pp->irqc);
 		return 0;
 
-	case PPSETTIME:
-		if (copy_from_user (&par_timeout, argp, sizeof(struct timeval))) {
+	case PPSETTIME_unsafe:
+		if (copy_from_user(time32, argp, sizeof(time32)))
 			return -EFAULT;
-		}
-		/* Convert to jiffies, place in pp->pdev->timeout */
-		if ((par_timeout.tv_sec < 0) || (par_timeout.tv_usec < 0)) {
+
+		return pp_set_timeout(pp->pdev, time32[0], time32[1]);
+
+	case PPSETTIME_safe:
+		if (copy_from_user(time64, argp, sizeof(time64)))
+			return -EFAULT;
+
+		return pp_set_timeout(pp->pdev, time64[0], time64[1]);
+
+	case PPGETTIME_unsafe:
+		pp_get_timeout(pp->pdev, (s64*)&time32[0], (s64*)&time32[1]);
+		if ((time32[0] < 0) || (time32[1] < 0))
 			return -EINVAL;
-		}
-		to_jiffies = ROUND_UP(par_timeout.tv_usec, 1000000/HZ);
-		to_jiffies += par_timeout.tv_sec * (long)HZ;
-		if (to_jiffies <= 0) {
-			return -EINVAL;
-		}
-		pp->pdev->timeout = to_jiffies;
+
+		if (copy_to_user(time32, argp, sizeof(time32)))
+			return -EFAULT;
+
 		return 0;
 
-	case PPGETTIME:
-		to_jiffies = pp->pdev->timeout;
-		memset(&par_timeout, 0, sizeof(par_timeout));
-		par_timeout.tv_sec = to_jiffies / HZ;
-		par_timeout.tv_usec = (to_jiffies % (long)HZ) * (1000000/HZ);
-		if (copy_to_user (argp, &par_timeout, sizeof(struct timeval)))
+	case PPGETTIME_safe:
+		pp_get_timeout(pp->pdev, &time64[0], &time64[1]);
+		if ((time64[0] < 0) || (time64[1] < 0))
+			return -EINVAL;
+
+		if (copy_to_user(time64, argp, sizeof(time64)))
 			return -EFAULT;
+
 		return 0;
 
 	default:
