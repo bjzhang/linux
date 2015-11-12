@@ -5,6 +5,7 @@ TARGETS += exec
 TARGETS += firmware
 TARGETS += ftrace
 TARGETS += futex
+TARGETS += gpio
 TARGETS += kcmp
 TARGETS += membarrier
 TARGETS += memfd
