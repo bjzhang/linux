@@ -586,6 +586,9 @@ static int lp_do_ioctl(unsigned int minor, unsigned int cmd,
 	if ((LP_F(minor) & LP_EXIST) == 0)
 		return -ENODEV;
 	switch ( cmd ) {
+		s32 time32[2];
+		s64 time64[2];
+
 		case LPTIME:
 			if (arg > UINT_MAX / HZ)
 				return -EINVAL;
@@ -653,26 +656,46 @@ static int lp_do_ioctl(unsigned int minor, unsigned int cmd,
 				return -EFAULT;
 			break;
 
+		case LPSETTIMEOUT:
+			/*
+			 * For 64bit application, 32bit application with 64bit
+			 * time_t
+			 */
+			if (IS_ENABLED(CONFIG_64BIT) || COMPAT_USE_64BIT_TIME) {
+				if (copy_from_user(time64, argp,
+							sizeof(time64)))
+					return -EFAULT;
+
+				ret = pp_set_timeout(pp->pdev, time64[0],
+						time64[1]);
+			} else {
+				if (copy_from_user(time32, argp,
+							sizeof(time32)))
+					return -EFAULT;
+
+				ret = pp_set_timeout(pp->pdev, time32[0],
+						time32[1]);
+			}
+			break;
 		default:
 			retval = -EINVAL;
 	}
 	return retval;
 }
 
-static int lp_set_timeout(unsigned int minor, struct timeval *par_timeout)
+static int lp_set_timeout(struct pardevice *pdev, __kernel_time_t tv_sec,
+		__kernel_suseconds_t tv_usec)
 {
 	long to_jiffies;
 
-	/* Convert to jiffies, place in lp_table */
-	if ((par_timeout->tv_sec < 0) ||
-	    (par_timeout->tv_usec < 0)) {
+	if ((tv_sec < 0) || (tv_usec < 0))
 		return -EINVAL;
-	}
-	to_jiffies = DIV_ROUND_UP(par_timeout->tv_usec, 1000000/HZ);
-	to_jiffies += par_timeout->tv_sec * (long) HZ;
-	if (to_jiffies <= 0) {
+
+	to_jiffies = usecs_to_jiffies(tv_usec);
+	to_jiffies += tv_sec * (long)HZ;
+	if (to_jiffies <= 0)
 		return -EINVAL;
-	}
+
 	lp_table[minor].timeout = to_jiffies;
 	return 0;
 }
@@ -686,25 +709,12 @@ static long lp_ioctl(struct file *file, unsigned int cmd,
 
 	minor = iminor(file_inode(file));
 	mutex_lock(&lp_mutex);
-	switch (cmd) {
-	case LPSETTIMEOUT:
-		if (copy_from_user(&par_timeout, (void __user *)arg,
-					sizeof (struct timeval))) {
-			ret = -EFAULT;
-			break;
-		}
-		ret = lp_set_timeout(minor, &par_timeout);
-		break;
-	default:
-		ret = lp_do_ioctl(minor, cmd, arg, (void __user *)arg);
-		break;
-	}
+	ret = lp_do_ioctl(minor, cmd, arg, (void __user *)arg);
 	mutex_unlock(&lp_mutex);
 
 	return ret;
 }
 
-#ifdef CONFIG_COMPAT
 static long lp_compat_ioctl(struct file *file, unsigned int cmd,
 			unsigned long arg)
 {
@@ -715,13 +725,6 @@ static long lp_compat_ioctl(struct file *file, unsigned int cmd,
 	minor = iminor(file_inode(file));
 	mutex_lock(&lp_mutex);
 	switch (cmd) {
-	case LPSETTIMEOUT:
-		if (compat_get_timeval(&par_timeout, compat_ptr(arg))) {
-			ret = -EFAULT;
-			break;
-		}
-		ret = lp_set_timeout(minor, &par_timeout);
-		break;
 #ifdef LP_STATS
 	case LPGETSTATS:
 		/* FIXME: add an implementation if you set LP_STATS */
@@ -736,15 +739,12 @@ static long lp_compat_ioctl(struct file *file, unsigned int cmd,
 
 	return ret;
 }
-#endif
 
 static const struct file_operations lp_fops = {
 	.owner		= THIS_MODULE,
 	.write		= lp_write,
 	.unlocked_ioctl	= lp_ioctl,
-#ifdef CONFIG_COMPAT
 	.compat_ioctl	= lp_compat_ioctl,
-#endif
 	.open		= lp_open,
 	.release	= lp_release,
 #ifdef CONFIG_PARPORT_1284
