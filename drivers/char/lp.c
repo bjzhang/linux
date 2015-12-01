@@ -15,7 +15,7 @@
  * Support for parport by Philip Blundell <philb@gnu.org>
  * Parport sharing hacking by Andrea Arcangeli
  * Fixed kernel_(to/from)_user memory copy to check for errors
- * 				by Riccardo Facchetti <fizban@tin.it>
+ *				by Riccardo Facchetti <fizban@tin.it>
  * 22-JAN-1998  Added support for devfs  Richard Gooch <rgooch@atnf.csiro.au>
  * Redesigned interrupt handling for handle printers with buggy handshake
  *				by Andrea Arcangeli, 11 May 1998
@@ -572,6 +572,23 @@ static int lp_release(struct inode * inode, struct file * file)
 	return 0;
 }
 
+static int lp_set_timeout(unsigned int minor, __kernel_time_t tv_sec,
+		__kernel_suseconds_t tv_usec)
+{
+	long to_jiffies;
+
+	if ((tv_sec < 0) || (tv_usec < 0))
+		return -EINVAL;
+
+	to_jiffies = usecs_to_jiffies(tv_usec);
+	to_jiffies += tv_sec * (long)HZ;
+	if (to_jiffies <= 0)
+		return -EINVAL;
+
+	lp_table[minor].timeout = to_jiffies;
+	return 0;
+}
+
 static int lp_do_ioctl(unsigned int minor, unsigned int cmd,
 	unsigned long arg, void __user *argp)
 {
@@ -618,7 +635,7 @@ static int lp_do_ioctl(unsigned int minor, unsigned int cmd,
 		case LPWAIT:
 			LP_WAIT(minor) = arg;
 			break;
-		case LPSETIRQ: 
+		case LPSETIRQ:
 			return -EINVAL;
 			break;
 		case LPGETIRQ:
@@ -666,14 +683,14 @@ static int lp_do_ioctl(unsigned int minor, unsigned int cmd,
 							sizeof(time64)))
 					return -EFAULT;
 
-				ret = pp_set_timeout(pp->pdev, time64[0],
+				return lp_set_timeout(minor, time64[0],
 						time64[1]);
 			} else {
 				if (copy_from_user(time32, argp,
 							sizeof(time32)))
 					return -EFAULT;
 
-				ret = pp_set_timeout(pp->pdev, time32[0],
+				return lp_set_timeout(minor, time32[0],
 						time32[1]);
 			}
 			break;
@@ -683,28 +700,10 @@ static int lp_do_ioctl(unsigned int minor, unsigned int cmd,
 	return retval;
 }
 
-static int lp_set_timeout(struct pardevice *pdev, __kernel_time_t tv_sec,
-		__kernel_suseconds_t tv_usec)
-{
-	long to_jiffies;
-
-	if ((tv_sec < 0) || (tv_usec < 0))
-		return -EINVAL;
-
-	to_jiffies = usecs_to_jiffies(tv_usec);
-	to_jiffies += tv_sec * (long)HZ;
-	if (to_jiffies <= 0)
-		return -EINVAL;
-
-	lp_table[minor].timeout = to_jiffies;
-	return 0;
-}
-
 static long lp_ioctl(struct file *file, unsigned int cmd,
 			unsigned long arg)
 {
 	unsigned int minor;
-	struct timeval par_timeout;
 	int ret;
 
 	minor = iminor(file_inode(file));
@@ -719,7 +718,6 @@ static long lp_compat_ioctl(struct file *file, unsigned int cmd,
 			unsigned long arg)
 {
 	unsigned int minor;
-	struct timeval par_timeout;
 	int ret;
 
 	minor = iminor(file_inode(file));
