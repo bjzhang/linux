@@ -136,6 +136,14 @@
 #include <asm/irq.h>
 #include <asm/uaccess.h>
 
+/*
+ * FIXME: It should be removed after COMPAT_USE_64BIT_TIME is accessible for
+ * 32bit architecture.
+ */
+#ifndef COMPAT_USE_64BIT_TIME
+#define COMPAT_USE_64BIT_TIME (0)
+#endif /* COMPAT_USE_64BIT_TIME */
+
 /* if you have more than 8 printers, remember to increase LP_NO */
 #define LP_NO 8
 
@@ -572,6 +580,22 @@ static int lp_release(struct inode * inode, struct file * file)
 	return 0;
 }
 
+static int lp_set_timeout(unsigned int minor, s64 tv_sec, s64 tv_usec)
+{
+	long to_jiffies;
+
+	if ((tv_sec < 0) || (tv_usec < 0))
+		return -EINVAL;
+
+	to_jiffies = usecs_to_jiffies(tv_usec);
+	to_jiffies += tv_sec * (long)HZ;
+	if (to_jiffies <= 0)
+		return -EINVAL;
+
+	lp_table[minor].timeout = to_jiffies;
+	return 0;
+}
+
 static int lp_do_ioctl(unsigned int minor, unsigned int cmd,
 	unsigned long arg, void __user *argp)
 {
@@ -586,6 +610,9 @@ static int lp_do_ioctl(unsigned int minor, unsigned int cmd,
 	if ((LP_F(minor) & LP_EXIST) == 0)
 		return -ENODEV;
 	switch ( cmd ) {
+		s32 time32[2];
+		s64 time64[2];
+
 		case LPTIME:
 			if (arg > UINT_MAX / HZ)
 				return -EINVAL;
@@ -647,58 +674,49 @@ static int lp_do_ioctl(unsigned int minor, unsigned int cmd,
 						sizeof(struct lp_stats));
 			break;
 #endif
- 		case LPGETFLAGS:
- 			status = LP_F(minor);
+		case LPGETFLAGS:
+			status = LP_F(minor);
 			if (copy_to_user(argp, &status, sizeof(int)))
 				return -EFAULT;
 			break;
 
+		case LPSETTIMEOUT:
+			/*
+			 * For 64bit application or 32bit application with 64bit
+			 * time_t
+			 */
+			if ((IS_ENABLED(CONFIG_64BIT) && !is_compat_task())
+			    || COMPAT_USE_64BIT_TIME) {
+				if (copy_from_user(time64, argp,
+							sizeof(time64)))
+					return -EFAULT;
+
+				return lp_set_timeout(minor, time64[0],
+						time64[1]);
+			} else {
+				if (copy_from_user(time32, argp,
+							sizeof(time32)))
+					return -EFAULT;
+
+				return lp_set_timeout(minor, time32[0],
+						time32[1]);
+			}
+			break;
 		default:
 			retval = -EINVAL;
 	}
 	return retval;
 }
 
-static int lp_set_timeout(unsigned int minor, struct timeval *par_timeout)
-{
-	long to_jiffies;
-
-	/* Convert to jiffies, place in lp_table */
-	if ((par_timeout->tv_sec < 0) ||
-	    (par_timeout->tv_usec < 0)) {
-		return -EINVAL;
-	}
-	to_jiffies = DIV_ROUND_UP(par_timeout->tv_usec, 1000000/HZ);
-	to_jiffies += par_timeout->tv_sec * (long) HZ;
-	if (to_jiffies <= 0) {
-		return -EINVAL;
-	}
-	lp_table[minor].timeout = to_jiffies;
-	return 0;
-}
-
 static long lp_ioctl(struct file *file, unsigned int cmd,
 			unsigned long arg)
 {
 	unsigned int minor;
-	struct timeval par_timeout;
 	int ret;
 
 	minor = iminor(file_inode(file));
 	mutex_lock(&lp_mutex);
-	switch (cmd) {
-	case LPSETTIMEOUT:
-		if (copy_from_user(&par_timeout, (void __user *)arg,
-					sizeof (struct timeval))) {
-			ret = -EFAULT;
-			break;
-		}
-		ret = lp_set_timeout(minor, &par_timeout);
-		break;
-	default:
-		ret = lp_do_ioctl(minor, cmd, arg, (void __user *)arg);
-		break;
-	}
+	ret = lp_do_ioctl(minor, cmd, arg, (void __user *)arg);
 	mutex_unlock(&lp_mutex);
 
 	return ret;
@@ -709,19 +727,11 @@ static long lp_compat_ioctl(struct file *file, unsigned int cmd,
 			unsigned long arg)
 {
 	unsigned int minor;
-	struct timeval par_timeout;
 	int ret;
 
 	minor = iminor(file_inode(file));
 	mutex_lock(&lp_mutex);
 	switch (cmd) {
-	case LPSETTIMEOUT:
-		if (compat_get_timeval(&par_timeout, compat_ptr(arg))) {
-			ret = -EFAULT;
-			break;
-		}
-		ret = lp_set_timeout(minor, &par_timeout);
-		break;
 #ifdef LP_STATS
 	case LPGETSTATS:
 		/* FIXME: add an implementation if you set LP_STATS */
