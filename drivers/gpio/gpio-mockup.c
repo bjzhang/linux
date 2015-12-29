@@ -31,7 +31,7 @@ enum direction {
  */
 struct gpio_pin_status {
 	enum direction	dir;
-	int		value;
+	bool		value;
 };
 
 struct mockup_gpio_controller {
@@ -39,11 +39,14 @@ struct mockup_gpio_controller {
 	struct gpio_pin_status	*stats;
 };
 
-int conf[MAX_GC << 1];
-int params_nr;
-module_param_array(conf, int, &params_nr, 0400);
+int gpio_base_conf[MAX_GC];
+int gpio_base_nr;
+module_param_array(gpio_base_conf, int, &gpio_base_nr, 0400);
+int gpio_ngpio_conf[MAX_GC];
+int gpio_ngpio_nr;
+module_param_array(gpio_ngpio_conf, int, &gpio_ngpio_nr, 0400);
 
-const char *pins_name[MAX_GC] = {"A", "B", "C", "D", "E"};
+const char *pins_name_start = "A";
 
 static int
 mockup_gpio_get(struct gpio_chip *gc, unsigned offset)
@@ -60,11 +63,7 @@ mockup_gpio_set(struct gpio_chip *gc, unsigned offset, int value)
 	struct mockup_gpio_controller *cntr = container_of(gc,
 			struct mockup_gpio_controller, gc);
 
-	if (value)
-		cntr->stats[offset].value = 1;
-	else
-		cntr->stats[offset].value = 0;
-
+	cntr->stats[offset].value = !!value;
 }
 
 static int mockup_gpio_dirout(struct gpio_chip *gc, unsigned offset,
@@ -128,22 +127,20 @@ mockup_gpio_probe(struct platform_device *pdev)
 	int base;
 	int ngpio;
 
-	if (params_nr == 0) {
-		params_nr = 2;
-		conf[0] = 0;
-		conf[1] = 32;
-	}
+	if ( gpio_base_nr != gpio_ngpio_nr )
+		return -EINVAL;
 
-	cntr = devm_kzalloc(dev, sizeof(*cntr) * params_nr, GFP_KERNEL);
+	cntr = devm_kzalloc(dev, sizeof(*cntr) * gpio_base_nr, GFP_KERNEL);
 	if (!cntr)
 		return -ENOMEM;
 
 	platform_set_drvdata(pdev, cntr);
 
 	for (i = 0; i < params_nr >> 1; i++) {
-		base = conf[i << 1];
-		ngpio = conf[(i << 1) + 1];
-		ret = mockup_gpio_add(dev, &cntr[i], pins_name[i], base, ngpio);
+		base = gpio_base_conf[i];
+		ngpio = gpio_base_conf[i];
+		ret = mockup_gpio_add(dev, &cntr[i], pins_name_start + i, base,
+				      ngpio);
 		if (ret) {
 			dev_err(dev, "gpio<%d..%d> add failed, remove added gpio\n",
 					base, base + ngpio);
@@ -214,3 +211,4 @@ MODULE_AUTHOR("Kamlakant Patel <kamlakant.patel@linaro.org>");
 MODULE_AUTHOR("Bamvor Jian Zhang <bamvor.zhangjian@linaro.org>");
 MODULE_DESCRIPTION("GPIO Testing driver");
 MODULE_LICENSE("GPL v2");
+
