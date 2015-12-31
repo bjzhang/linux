@@ -39,12 +39,12 @@ struct mockup_gpio_controller {
 	struct gpio_pin_status	*stats;
 };
 
-int gpio_base_conf[MAX_GC];
-int gpio_base_nr;
-module_param_array(gpio_base_conf, int, &gpio_base_nr, 0400);
-int gpio_ngpio_conf[MAX_GC];
-int gpio_ngpio_nr;
-module_param_array(gpio_ngpio_conf, int, &gpio_ngpio_nr, 0400);
+int gpio_bases[MAX_GC];
+int gpio_bases;
+module_param_array(gpio_mockup_bases, int, &gpio_mockup_bases_nr, 0400);
+int gpio_ngpios[MAX_GC];
+int gpio_ngpios_nr;
+module_param_array(gpio_mockup_ngpios, int, &gpio_mockup_ngpios_nr, 0400);
 
 const char *pins_name_start = "A";
 
