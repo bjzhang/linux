@@ -1,12 +1,28 @@
 
 struct gpio_chip {
-
-	void *private;
+	char *name;
+	int base;
+	int ngpio;
 };
 
-struct gpio_sysfs_private {
-	const char *sysfs;
+//TODO: get sysfs, debugfs, location
+
+struct _gpio_sysfs_private {
+	const char *gpio_debugfs;
+	const char *gpio_sysfs;
+	char *gpio_drv_sysfs;
+} gpio_sysfs_private = {
+	const char *gpio_debugfs = "/sys/kernel/debug/gpio",
+	const char *gpio_sysfs = "/sys/class/gpio",
 }
+
+struct gpio_device gpio_sysfs = {
+	.init = init;
+	.exit = exit;
+	.list = list;
+	.test = test;
+	.private = gpio_sysfs_private;
+};
 
 enum direction {
 	IN,
@@ -28,41 +44,48 @@ struct gpio_pin_status {
 	{"high", true, true}
 };
 
-static int export(struct gpio_chip *gc, int nr)
+static int export(struct gpio_device *dev, int nr)
 {
-	struct gpio_sysfs_private *private =
-		(struct gpio_sysfs_private*)gc->private;
+	struct _gpio_sysfs_private *private =
+		(struct _gpio_sysfs_private*)dev->private;
 	char *path;
+	char *number;
 	int fd;
 
-	path = asprintf("%s/export", private->sysfs);
+	asprintf(path, "%s/export", private->gpio_sysfs);
+	asprintf(number, "%d", nr);
 	//TODO error check
 	fd = open(path, O_WRONLY);
 	//TODO error check
-	write(fd, nr);
+	write(fd, number);
 	close(fd);
 
 	free(path);
+	free(number);
 	return 0;
 }
 
-static int unexport(struct gpio_chip *gc, int nr);
+static int unexport(struct gpio_device *dev, int nr);
 {
-	struct gpio_sysfs_private *private =
-		(struct gpio_sysfs_private*)gc->private;
+	struct _gpio_sysfs_private *private =
+		(struct _gpio_sysfs_private*)dev->private;
 	char *path;
+	char *number;
 	int fd;
 
-	path = asprintf("%s/unexport", private->sysfs);
+	asprintf(path, "%s/unexport", private->gpio_sysfs);
+	asprintf(number, "%d", nr);
 	//TODO error check
 	fd = open(path, O_WRONLY);
 	//TODO error check
-	write(fd, nr);
+	write(fd, number);
 	close(fd);
 
 	free(path);
+	free(number);
 	return 0;
 }
+
 static int is_consistent(struct gpio_chip *gc, int nr);
 static int set_direction(struct gpio_chip *gc, int nr, const chat *dir);
 static int set_value(struct gpio_chip *gc, int nr, bool value);
@@ -79,19 +102,41 @@ static int function_test(struct gpio_chip *gc, int nr,
 	return is_consistent(gc, nr);
 }
 
-int pin_test(struct gpio_chip *gc, int nr)
+static int init(struct gpio_device *dev)
 {
-	if (export(gc, nr) < 0)
+	struct _gpio_sysfs_private *private =
+		(struct _gpio_sysfs_private*)dev->private;
+	int ret;
+
+	ret = asprintf(private->gpio_drv_sysfs, "/sys/devices/platform/%s/gpio",
+			dev->name);
+	return ret > 0 ? 0 : ret;
+}
+
+static void exit(struct gpio_device *dev)
+{
+	struct _gpio_sysfs_private *private =
+		(struct _gpio_sysfs_private*)dev->private;
+	free(private->gpio_drv_sysfs);
+	private->gpio_drv_sysfs = NULL;
+}
+
+static int test(struct gpio_device *dev, int nr, bool is_valid)
+{
+	if (export(dev, nr) < 0)
 		return -1;
 
-	if (is_consistent() < 0)
-		return -1;
+	if (is_consistent(dev, nr) < 0)
+		if (is_valid)
+			return -1;
+		else
+			return 0;
 
 	for (i = 0; i < sizeof(status) / sizeof(struct gpio_pin_status); i++) {
-		function_test(gc, nr, status[i]);
+		function_test(dev, nr, status[i]);
 	}
 
-	unexport(gc, nr) < 0;
+	unexport(dev, nr) < 0;
 	return 0;
 }
 

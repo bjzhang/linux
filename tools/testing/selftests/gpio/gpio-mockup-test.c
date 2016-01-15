@@ -43,31 +43,13 @@ struct gpio_testcase_t {
 //	gpio_test_fail "0,32,40,16,20,1"
 };
 
-struct gpio_chip {
-	char *name;
-	int base;
-	int ngpio;
-};
-
-struct gpio_group {
-	struct gpio_chip *chips;
-	struct gpio_chip* (*list)(struct gpio_group *groups);
-	int (*test)(struct gpio_chip *chip, unsigned pin);
-	int (*check)(struct gpio_chip *chip, unsigned pin);
-};
-
-//TODO: get sysfs, debugfs, location
-const char *gpio_sysfs = "/sys/class/gpio"
-const char *gpio_drv_sysfs = "/sys/devices/platform/gpio-mockup/gpio`
-const char *gpio_debugfs = "/sys/kernel/debug/gpio"
-
 void prerequisite()
 {
 	//TODO: must be run as root
 	printf("uid<%d>, euid<%d>\n", getuid(), geteuid());
 }
 
-int gpio_test(const char *module, struct gpio_testcase_t *tc)
+int test(const char *module, struct gpio_testcase_t *tc)
 {
 	int i;
 	int offset = 0;
@@ -76,6 +58,7 @@ int gpio_test(const char *module, struct gpio_testcase_t *tc)
 	char *bases = "xxx,xxx,xxx,xxx,xxx";	//The max gpio is 512.
 	char *ngpios = "xxx,xxx,xxx,xxx,xxx";
 	int ret;
+	struct gpio_device *dev;
 
 	offset = 0;
 	for (i = 0; i < tc->nr_gc; i++){
@@ -114,40 +97,32 @@ int gpio_test(const char *module, struct gpio_testcase_t *tc)
 	system(insert);
 	//TODO error check
 
-	struct gpio_group *groups_sysfs;
-	groups_sysfs->chips = groups_sysfs->list(groups_sysfs);
-	for_each(groups_sysfs->chips) {
-		struct gpio_chip *chip;
-		chip = groups_sysfs->chips[0];
-		chip->test(chip, chip->base);
-		chip->test(chip, chip->base + chip->ngpio - 1);
-		chip->test(chip, random(chip->base, chip->base + chip->ngpio - 1));
+	//TODO default char dev
+	if (0)
+		dev = gpio_chardev;
+	else
+		dev = gpio_sysfs;
+
+	if (tc->is_valid_gc) {
+		dev->name = module;
+		if (dev->init(dev))
+			return -1;
+
+		dev->list(dev);
+		for (i = 0; i < dev->nchips; i++) {
+			struct gpio_chip *chip = dev->chips[i];
+			dev->test(dev, chip->base, true);
+			dev->test(dev, chip->base + chip->ngpio - 1, true);
+			dev->test(dev, random(chip->base, chip->base + chip->ngpio - 1), true);
+		}
+		dev->test(dev, tc->invalid_pin, false);
 	}
-//	printf("%-10s %-5s %-5s\n", name, base, ngpio);
-//	gpiochip=`ls -d $GPIO_DRV_SYSFS/gpiochip* 2>/dev/null`
-//	if [ X"$gpiochip" = X ]; then
-//		echo "no gpiochip"
-//	else
-//		for chip in $gpiochip; do
-//			name=`basename $chip`
-//			base=`cat $chip/base`
-//			ngpio=`cat $chip/ngpio`
-//			printf "%-10s %-5s %-5s\n" $name $base $ngpio
-//			if [ $ngpio = "0" ]; then
-//				echo "number of gpio is zero is not allowed".
-//			fi
-//			test_one_pin $base
-//			test_one_pin $(($base + $ngpio - 1))
-//			test_one_pin $((( RANDOM % $ngpio )  + $base ))
-//			if [ X$invalid_pin != X ]; then
-//				test_one_pin_fail $invalid_pin
-//			fi
-//		done
-//	fi
 	system(remove_module);
 }
 
-
+void summary()
+{
+	printf ("GPIO test PASS\n");
 }
 
 int main(int argc, char *argv[])
@@ -160,25 +135,7 @@ int main(int argc, char *argv[])
 	//-t "force one test case"
 	//-s "force use sysfs interface no matter char device exist or not".
 	prerequisite();
-	for( i = 0; i < sizeof(gpio_testcases) / sizeof(struct gpio_testcase_t); i++) {
-		printf("%d\n", i);
-		t = &gpio_testcases[i];
-		if (t->nr_bases != 0) {
-			for ( j = 0; j < t->nr_bases; j++) {
-				printf("bases: %d\n", t->bases[j]);
-			}
-		}
-		if (t->nr_ngpios != 0) {
-			for ( j = 0; j < t->nr_ngpios; j++) {
-				printf("ngpios: %d\n", t->ngpios[j]);
-			}
-		}
-		if (t->invalid_pin != -1) {
-			printf("invalid_pin: %d\n", t->invalid_pin);
-		}
-		printf("expect_successful: %s\n",
-		       t->expect_successful ? "true" : "false");
-	}
-	printf ("GPIO test PASS\n");
+	test();
+	summary();
 }
 
