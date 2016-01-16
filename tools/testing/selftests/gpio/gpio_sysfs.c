@@ -1,4 +1,6 @@
 
+#include <errno.h>
+
 struct gpio_chip {
 	char *name;
 	int base;
@@ -44,6 +46,53 @@ struct gpio_pin_status {
 	{"high", true, true}
 };
 
+static int sysfs_read(const char *path, char **valuep)
+{
+	int fd;
+	int count;
+	int total;
+	int actual;
+
+	fd = open(path, O_RDONLY);
+	if (fd == -1)
+		return -errno;
+
+	count = 10;
+	total = 0;
+	*valuep = malloc(count * sizeof(char));
+	while(actual != 0) {
+retry:
+		actual = read(fd, *valuep, count);
+		switch(actual) {
+		case -1:
+			if (errno == EAGAIN || errno == EINTR)
+				goto retry;
+			else
+				return err;
+			break;
+		case 0:
+			*valuep = realloc(*valuep, total);
+			if (*valuep == NULL)
+				goto err;
+
+			break;
+		default:
+			total += acual;
+			*valuep = realloc(*valuep, total + count);
+			if (*valuep == NULL)
+				goto err;
+
+			break;
+		}
+	}
+
+	return 0;
+err:
+	free(*valuep);
+	return errno;
+}
+
+static int sysfs_write(const char *path, const char *value);
 static int export(struct gpio_device *dev, int nr)
 {
 	struct _gpio_sysfs_private *private =
