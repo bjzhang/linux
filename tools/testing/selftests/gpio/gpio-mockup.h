@@ -1,5 +1,7 @@
 
 struct gpio_chip;
+struct gpio_device gpio_sysfs;
+struct gpio_device gpio_chardev;
 
 struct gpio_device {
 	char *name;

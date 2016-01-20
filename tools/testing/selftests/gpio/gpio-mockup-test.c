@@ -95,22 +95,30 @@ out:
 	system(remove);
 }
 
-void summary()
+void summary(int err)
 {
-	printf ("GPIO test PASS\n");
+	if (err > 0)
+		fprintf(stderr, "GPIO test with %d error\n", err);
+	else
+		printf ("GPIO test PASS\n");
 }
 
 int main(int argc, char *argv[])
 {
-	struct gpio_testcase_t *t;
-	int i, j;
+	char *module;
+	int err = 0;
+	int i;
 
 	//TODO: paramter:
 	//-m module_name
 	//-t "force one test case"
 	//-s "force use sysfs interface no matter char device exist or not".
 	prerequisite();
-	test();
-	summary();
+	for (i = 0; i< sizeof(gpio_testcases)/sizeof(struct gpio_testcase_t);
+	     i++ ) {
+		if (test(module, gpio_testcases[i]) < 0)
+			err++;
+	}
+	summary(err);
 }
 

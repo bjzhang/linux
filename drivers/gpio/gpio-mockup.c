@@ -92,7 +92,7 @@ int mockup_gpio_add(struct device *dev, struct mockup_gpio_controller *cntr,
 	cntr->gc.ngpio = ngpio;
 	cntr->gc.label = name;
 	cntr->gc.owner = THIS_MODULE;
-	cntr->gc.dev = dev;
+	cntr->gc.parent = dev;
 	cntr->gc.get = mockup_gpio_get;
 	cntr->gc.set = mockup_gpio_set;
 	cntr->gc.direction_output = mockup_gpio_dirout;
