@@ -5,21 +5,19 @@
 
 #define MAX_GC 5
 struct gpio_testcase_t {
-	int bases[MAX_GC];
-	int ngpios[MAX_GC];
-	int nr_gc;
-	int invalid_pin;
 	bool is_valid_gc;
+	char ranges[];
 } gpio_testcases[] = {
 	//1.  Do basic test: successful means insert gpiochip and manipulate gpio pin successful
-	{{0}, {0}, 0, -1, true},
-	{{0}, {32}, 1, 33, true},
-	{{0,32}, {32,16}, 2, 50, true},
-	{{0, 40, 32}, {32, 16, 5}, 3, 38, true},
+	{true, "0, 32"},
+	{true, "0,32,32,64"},
+	{true, "0,32,40,56,64,70"},
 	//2.  Test dynamic allocation of gpio successful means insert gpiochip and manipulate gpio pin successful
-	{{-1}, {32}, 1, 0, true},
-	{{-1, 32}, {32,16}, 2, 31, true},
-	{{-1, 40, -1}, {32, 16, 5}, 3, 38, true},
+	{true, "-1,32"},
+	{true, "-1, 32, 0, 32"},
+	{true, "-1, 32, 32, 64"},
+	//{{-1, 32}, {32,16}, 2, 31, true},
+	//{{-1, 40, -1}, {32, 16, 5}, 3, 38, true},
 	//3.  Error test: successful means insert gpiochip failed
 	//3.1 Test zero line of gpio
 //	gpio_test_fail "0,0"
@@ -55,41 +53,10 @@ int test(const char *module, struct gpio_testcase_t *tc)
 	int offset = 0;
 	char *insert;
 	char *remove;
-	char *bases = "xxx,xxx,xxx,xxx,xxx";	//The max gpio is 512.
-	char *ngpios = "xxx,xxx,xxx,xxx,xxx";
 	int ret;
 	struct gpio_device *dev;
 
-	offset = 0;
-	for (i = 0; i < tc->nr_gc; i++){
-		if (i != tc->nr_gc - 1 )
-			asprintf
-			offset = snprintf(bases + offset, sizeof(bases), "%d,", tc->bases[i]);
-		else
-			offset = snprintf(bases + offset, sizeof(bases), "%d", tc->bases[i]);
-
-		//TODO:
-		if (offset <= 0)
-			return -1;
-	}
-
-	offset = 0;
-	for (i = 0; i < tc->nr_gc; i++){
-		if (i != tc->nr_gc - 1 )
-			offset = snprintf(ngpios + offset, sizeof(ngpios), "%d,", tc->ngpios[i]);
-		else
-			offset = snprintf(ngpios + offset, sizeof(ngpios), "%d", tc->ngpios[i]);
-
-		//TODO:
-		if (offset <= 0)
-			return -1;
-	}
-
-	if (tc->gc_nr == 0)
-		ret = asprintf(&insert, "/usr/sbin/modprobe -q %s", module);
-	else
-		ret = asprintf(&insert, "/usr/sbin/modprobe -q %s gpio_mockup_bases=\"%s\"gpio_mockup_ngpios=\"%s\"", module, bases, ngpios);
-
+	ret = asprintf(&insert, "/usr/sbin/modprobe -q %s gpio_mockup_ranges=\"%s\"", module, tc->ranges);
 	if (ret < 0)
 		return -1;
 
@@ -115,9 +82,17 @@ int test(const char *module, struct gpio_testcase_t *tc)
 			dev->test(dev, chip->base + chip->ngpio - 1, true);
 			dev->test(dev, random(chip->base, chip->base + chip->ngpio - 1), true);
 		}
-		dev->test(dev, tc->invalid_pin, false);
+		ret = dev->test(dev, tc->invalid_pin, false);
+		if (ret < 0)
+			goto out:
 	}
-	system(remove_module);
+
+out:
+	ret = asprintf(&insert, "/usr/sbin/modprobe -q -r %s", module);
+	if (ret < 0)
+		return -1;
+
+	system(remove);
 }
 
 void summary()

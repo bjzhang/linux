@@ -39,12 +39,9 @@ struct mockup_gpio_controller {
 	struct gpio_pin_status	*stats;
 };
 
-int gpio_bases[MAX_GC];
-int gpio_bases;
-module_param_array(gpio_mockup_bases, int, &gpio_mockup_bases_nr, 0400);
-int gpio_ngpios[MAX_GC];
-int gpio_ngpios_nr;
-module_param_array(gpio_mockup_ngpios, int, &gpio_mockup_ngpios_nr, 0400);
+int gpio_mockup_ranges[MAX_GC];
+int gpio_mockup_params_nr;
+module_param_array(gpio_mockup_ranges, int, &gpio_mockup_params_nr, 0400);
 
 const char *pins_name_start = "A";
 
@@ -127,23 +124,32 @@ mockup_gpio_probe(struct platform_device *pdev)
 	int base;
 	int ngpio;
 
-	if ( gpio_base_nr != gpio_ngpio_nr )
+	if (gpio_mockup_params_nr < 2)
 		return -EINVAL;
 
-	cntr = devm_kzalloc(dev, sizeof(*cntr) * gpio_base_nr, GFP_KERNEL);
+	cntr = devm_kzalloc(dev, sizeof(*cntr) * (gpio_mockup_params_nr << 1), GFP_KERNEL);
 	if (!cntr)
 		return -ENOMEM;
 
 	platform_set_drvdata(pdev, cntr);
 
-	for (i = 0; i < params_nr >> 1; i++) {
-		base = gpio_base_conf[i];
-		ngpio = gpio_base_conf[i];
+	for (i = 0; i < gpio_mockup_params_nr >> 1; i++) {
+		base = gpio_mockup_ranges[i];
+		if ( base == -1 )
+			ngpio = gpio_mockup_ranges[i + 1];
+		else
+			ngpio = gpio_mockup_ranges[i + 1] - base;
+
 		ret = mockup_gpio_add(dev, &cntr[i], pins_name_start + i, base,
 				      ngpio);
 		if (ret) {
-			dev_err(dev, "gpio<%d..%d> add failed, remove added gpio\n",
-					base, base + ngpio);
+			if (base < 0)
+				dev_err(dev, "gpio<%d..%d> add failed, remove added gpio\n",
+						base, ngpio);
+			else
+				dev_err(dev, "gpio<%d..%d> add failed, remove added gpio\n",
+						base, base + ngpio);
+
 			for (j = 0; j < i; j++)
 				gpiochip_remove(&cntr[j].gc);
 
@@ -159,7 +165,7 @@ static int mockup_gpio_remove(struct platform_device *pdev)
 	struct mockup_gpio_controller *cntr = platform_get_drvdata(pdev);
 	int i;
 
-	for (i = 0; i < params_nr >> 1; i++)
+	for (i = 0; i < gpio_mockup_params_nr >> 1; i++)
 		gpiochip_remove(&cntr[i].gc);
 
 	return 0;

@@ -333,7 +333,7 @@ int gpiochip_add_data(struct gpio_chip *chip, void *data)
 
 	chip->data = data;
 
-	if (chip->ngpio == 0) {
+	if (!gpio_is_valid(chip->ngpio)) {
 		chip_err(chip, "tried to insert a GPIO chip with zero lines\n");
 		return -EINVAL;
 	}
