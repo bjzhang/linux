@@ -1,5 +1,10 @@
 
+#include <stdio.h>
 #include <errno.h>
+#include <sys/types.h>
+#include <dirent.h>
+#include <unistd.h>
+#include "gpio-mockup.h"
 
 struct gpio_chip {
 	char *name;
@@ -8,42 +13,37 @@ struct gpio_chip {
 };
 
 struct _gpio_sysfs_private {
-	const char *gpio_debugfs;
-	const char *gpio_sysfs;
-	char *gpio_drv_sysfs;
+	const char *debugfs;
+	const char *sysfs;
+	char *sysfs_device;
 } gpio_sysfs_private = {
 	//FIXME: get sysfs, debugfs, location dynamically.
-	const char *gpio_debugfs = "/sys/kernel/debug/gpio",
-	const char *gpio_sysfs = "/sys/class/gpio",
+	const char *debugfs = "/sys/kernel/debug/gpio",
+	const char *sysfs = "/sys/class/gpio",
 };
 
-struct gpio_device gpio_sysfs = {
-	.init = init;
-	.exit = exit;
-	.list = list;
-	.test = test;
-	.private = gpio_sysfs_private;
-};
-
-enum direction {
-	INVAL	= -1
-	IN	= 0,
-	OUT
+enum direction
+{
+	INVAL = -1;
+	IN = 0,
+	OUT,
+	HIGH,
+	LOW,
 };
 
 struct gpio_pin_status {
-	const char	*dir;
+	enum direction	dir;
 	bool		value;
 	bool		active_low;
 } = status {
-	{"out", true, true},
-	{"out", true, false},
-	{"out", false, true},
-	{"out", false, true},
-	{"in", true, true},
-	{"out", true, false},
-	{"low", true, true},
-	{"high", true, true}
+	{OUT, true, true},
+	{OUT, true, false},
+	{OUT, false, true},
+	{OUT, false, false},
+	{IN, true, true},
+	{OUT, true, false},
+	{LOW, true, true},
+	{HIGH, true, true}
 };
 
 static int sysfs_read(const char *path, char **valuep)
@@ -125,9 +125,8 @@ static int export(struct gpio_device *dev, int nr)
 		(struct _gpio_sysfs_private*)dev->private;
 	char *path;
 	char *value;
-	int fd;
 
-	asprintf(path, "%s/export", private->gpio_sysfs);
+	asprintf(path, "%s/export", private->sysfs);
 	asprintf(value, "%d", nr);
 	sysfs_write(path, value);
 	free(path);
@@ -143,7 +142,7 @@ static int unexport(struct gpio_device *dev, int nr);
 	char *path;
 	char *value;
 
-	asprintf(path, "%s/unexport", private->gpio_sysfs);
+	asprintf(path, "%s/unexport", private->sysfs);
 	asprintf(value, "%d", nr);
 	sysfs_write(path, value);
 	free(path);
@@ -152,7 +151,7 @@ static int unexport(struct gpio_device *dev, int nr);
 	return 0;
 }
 
-static int set_direction(struct gpio_chip *gc, int nr, const char *dir)
+static int set_direction(struct gpio_chip *gc, int nr, enum direction dir)
 {
 	struct _gpio_sysfs_private *private =
 		(struct _gpio_sysfs_private*)dev->private;
@@ -160,12 +159,25 @@ static int set_direction(struct gpio_chip *gc, int nr, const char *dir)
 	char *value;
 	int ret = 0;
 
-	asprintf(path, "%s/%d/direction", private->gpio_sysfs, nr);
-	if(sysfs_write(path, dir) < 0)
+	asprintf(path, "%s/%d/direction", private->sysfs, nr);
+	switch dir {
+		case IN:
+			value = "in";
+			break;
+		case OUT:
+			value = "out";
+			break;
+		case LOW:
+			value = "low";
+			break;
+		case HIGH:
+			value = "high";
+			break;
+	}
+	if(sysfs_write(path, value) < 0)
 		ret = -1;
 
 	free(path);
-
 	return ret;
 }
 
@@ -175,19 +187,21 @@ static enum direction get_direction(struct gpio_chip *gc, int nr)
 		(struct _gpio_sysfs_private*)dev->private;
 	char *path;
 	char *value;
-	enum direction dir = OUT;
+	enum direction dir;
 
-	asprintf(path, "%s/%d/direction", private->gpio_sysfs, nr);
-	if (sysfs_read(path, value) < 0)
+	asprintf(path, "%s/%d/direction", private->sysfs, nr);
+	if (sysfs_read(path, &value) < 0) {
 		dir = INVAL;
-
-	if (!strcmp(dir, "in"))
-		dir = IN;
-	else if (!strcmp(dir, "out"))
+		goto out;
+	}
+	if (!strcmp(value, "out"))
 		dir = OUT;
+	else if (!strcmp(value, "int"))
+		dir = IN;
 
+out:
 	free(path);
-
+	free(value);
 	return dir;
 }
 
@@ -210,52 +224,126 @@ static bool get_value(struct gpio_chip *gc, int nr)
 		(struct _gpio_sysfs_private*)dev->private;
 	char *path;
 	char *value;
-	bool value;
+	bool val;
 
 	asprintf(path, "%s/%d/value", private->gpio_syfs, nr);
-	sysfs_read(path, value);
+	sysfs_read(path, &value);
 	if (!strcmp(value, "0"))
-		value = false;
-	else if (!strcmp(value, "1"))
-		value = true;
+		val = false;
+	else (!strcmp(value, "1"))
+		val = true;
 
 	free(path);
-
-	return 0;
+	free(value);
+	return val;
 }
+
 static int set_active_low(struct gpio_chip *gc, int nr, bool active_low)
 {
 	struct _gpio_sysfs_private *private =
 		(struct _gpio_sysfs_private*)dev->private;
 	char *path;
 
-	asprintf(path, "%s/%d/active_low", private->gpio_sysfs, nr);
-	sysfs_write(path, active_low?"1":"0");
+	asprintf(path, "%s/%d/active_low", private->sysfs, nr);
+	sysfs_write(path, active_low ? "1" : "0");
 	free(path);
 
 	return 0;
 }
 
-
-static int is_consistent(struct gpio_chip *gc, int nr)
+static bool get_active_low(struct gpio_chip *gc, int nr)
 {
 	struct _gpio_sysfs_private *private =
 		(struct _gpio_sysfs_private*)dev->private;
 	char *path;
-	char *active_low_sysfs;
-	char *val_sysfs;
-	char *dir_sysfs;
-	int dir_debugfs;
-	int val_debugfs;
+	char *value;
+	bool active_low;
 
-	asprintf(path, "%s/%d/active_low", private->gpio_sysfs, nr);
-	sysfs_read(path, &active_low_sysfs);
-	asprintf(path, "%s/%d/value", private->gpio_sysfs, nr);
+	asprintf(path, "%s/%d/active_low", private->sysfs, nr);
 	sysfs_read(path, &value);
-	asprintf(path, "%s/%d/dir", private->gpio_sysfs, nr);
-	sysfs_read(path, &dir);
 
+	if (!strcmp(value, "0"))
+		active_low = false;
+	else (!strcmp(value, "1"))
+		active_low = true;
 
+	free(path);
+	free(value);
+	return active_low;
+}
+
+static int pin_get_sysfs(struct gpio_chip *gc, int nr,
+		struct gpio_pin_status *status)
+{
+	status->active_low = get_active_low(gc, nr);
+	status->val = get_value(gc, nr);
+	status->dir = get_direction(gc, nr);
+	if(status->active_low) {
+		status->val = !status->val;
+		status->active_low = false;
+	}
+	return 0;
+}
+
+static int pin_get_debugfs(struct gpio_chip *gc, int nr,
+		struct gpio_pin_status *status)
+{
+	struct _gpio_sysfs_private *private =
+		(struct _gpio_sysfs_private*)dev->private;
+	int fd;
+	char *line;
+	char *name;
+	char *cur;
+
+	fd = open(private->debugfs, O_RDONLY);
+	if (fd == -1)
+		return -errno;
+
+	asprintf(name, "gpio-%d", nr);
+	while(line = readline(NULL)) {
+		// gpio-2   (                    |sysfs               ) in  lo
+		if (strstr(line, name)) {
+			cur = strchr(line, ")");
+			if (cur) {
+				cur += 2;
+				if (!strncmp(cur, "out", 3)) {
+					status->dir = OUT;
+					cur += 4;
+				} else if (!strncmp(cur, "in", 2)) {
+					status->dir = IN;
+					cur += 3;
+				}
+
+				if (!strncmp(cur, "hi", 2))
+					status->value = true;
+				else if (!strncmp(cur, "lo", 2))
+					status->value = false;
+
+			}
+		}
+		free(line);
+		line = NULL;
+	}
+	free(name);
+	return 0;
+}
+
+static bool is_consistent(struct gpio_chip *gc, int nr)
+{
+	struct gpio_pin_status status_sysfs;
+	struct gpio_pin_status status_debugfs;
+	bool ret;
+
+	pin_get_sysfs(gc, nr, &status_sysfs);
+	pin_get_debugfs(gc, nr, &status_debugfs);
+	if (!memcmp(&status_sysfs, &status_debugfs,
+				sizeof(struct gpio_pin_status)))
+		ret = true;
+	else
+		ret = false
+
+	free(status_sysfs.dir);
+	return ret;
 }
 
 static int function_test(struct gpio_chip *gc, int nr,
@@ -263,7 +351,7 @@ static int function_test(struct gpio_chip *gc, int nr,
 {
 	set_direction(gc, nr, status->dir);
 	set_active_low(gc, nr, status->active_low);
-	if (!!strcmp(status->dir, "in"))
+	if (status->dir == OUT)
 		set_value(gc, nr, status->value);
 
 	return is_consistent(gc, nr);
@@ -275,29 +363,66 @@ static int init(struct gpio_device *dev)
 		(struct _gpio_sysfs_private*)dev->private;
 	int ret;
 
-	ret = asprintf(private->gpio_drv_sysfs, "/sys/devices/platform/%s/gpio",
+	dev->ngpios = 0;
+	ret = asprintf(private->sysfs_device, "/sys/devices/platform/%s/gpio",
 			dev->name);
-	return ret > 0 ? 0 : ret;
+	return ret > 0 ? 0 : -1;
 }
 
 static void exit(struct gpio_device *dev)
 {
 	struct _gpio_sysfs_private *private =
 		(struct _gpio_sysfs_private*)dev->private;
-	free(private->gpio_drv_sysfs);
-	private->gpio_drv_sysfs = NULL;
+	int i;
+
+	free(private->sysfs_device);
+	private->sysfs_device = NULL;
+	if(dev->ngpios != 0) {
+		for (i = 0; i < dev->nchips; i++) {
+			free(dev->chips[i]->name);
+			dev->chips[i]->name = NULL;
+		}
+		free(dev->chips);
+		dev->chips = NULL;
+	}
 }
 
-static int test(struct gpio_device *dev, int nr, bool is_valid)
+static int list(struct gpio_device *dev)
+{
+	struct _gpio_sysfs_private *private =
+		(struct _gpio_sysfs_private*)dev->private;
+	DIR *dir;
+	struct dirent *ptr;
+	int count = 10;
+
+	dev->chips = (struct gpio_chip*)malloc(sizoef(struct gpio_chip) * count);
+	if (!dev->chips)
+		return -1;
+
+	dir = opendir(private->sysfs_device);
+	while(ptr = readdir(dir)) {
+		if(strncmp(ptr->d_name, "gpiochip", strlen("gpiochip")) != 0)
+			continue;
+
+		if(dev->ngpios == count) {
+			count += 10;
+			dev->chips = (struct gpio_chip*)realloc(sizeof(struct gpio_chip) * count);
+		}
+		dev->chips[dev->ngpios]->name = strdup(ptr->d_name); 
+		dev->ngpios++;
+	}
+	dev->chips = (struct gpio_chip*)realloc(sizeof(struct gpio_chip) * dev->nchips);
+	close(dir);
+	return 0;
+}
+
+static int test(struct gpio_device *dev, int nr)
 {
 	if (export(dev, nr) < 0)
 		return -1;
 
 	if (is_consistent(dev, nr) < 0)
-		if (is_valid)
-			return -1;
-		else
-			return 0;
+		return -1;
 
 	for (i = 0; i < sizeof(status) / sizeof(struct gpio_pin_status); i++) {
 		function_test(dev, nr, status[i]);
@@ -306,4 +431,12 @@ static int test(struct gpio_device *dev, int nr, bool is_valid)
 	unexport(dev, nr) < 0;
 	return 0;
 }
+
+struct gpio_device gpio_sysfs = {
+	.init = init;
+	.exit = exit;
+	.list = list;
+	.test = test;
+	.private = gpio_sysfs_private;
+};
 

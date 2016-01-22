@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>	//for system
+#include "gpio-mockup.h"
 
 #define MAX_GC 5
 struct gpio_testcase_t {
@@ -41,13 +42,13 @@ struct gpio_testcase_t {
 //	gpio_test_fail "0,32,40,16,20,1"
 };
 
-void prerequisite()
+static void prerequisite()
 {
 	//TODO: must be run as root
 	printf("uid<%d>, euid<%d>\n", getuid(), geteuid());
 }
 
-int test(const char *module, struct gpio_testcase_t *tc)
+static int gpio_test(const char *module, struct gpio_testcase_t *tc)
 {
 	int i;
 	int offset = 0;
@@ -70,23 +71,28 @@ int test(const char *module, struct gpio_testcase_t *tc)
 	else
 		dev = gpio_sysfs;
 
+	dev->name = module;
+	if (dev->init(dev))
+		return -1;
+
+	dev->list(dev);
+	if (!tc->is_valid_gc && dev->nchips > 0)
+		return -1;
+
 	if (tc->is_valid_gc) {
-		dev->name = module;
-		if (dev->init(dev))
+		if (dev->nchips == 0)
 			return -1;
 
-		dev->list(dev);
-		for (i = 0; i < dev->nchips; i++) {
-			struct gpio_chip *chip = dev->chips[i];
-			dev->test(dev, chip->base, true);
-			dev->test(dev, chip->base + chip->ngpio - 1, true);
-			dev->test(dev, random(chip->base, chip->base + chip->ngpio - 1), true);
+		if(dev->test) {
+			for (i = 0; i < dev->nchips; i++) {
+				struct gpio_chip *chip = dev->chips[i];
+				dev->test(dev, chip->base, true);
+				dev->test(dev, chip->base + chip->ngpio - 1, true);
+				dev->test(dev, random(chip->base, chip->base + chip->ngpio - 1), true);
+			}
 		}
-		ret = dev->test(dev, tc->invalid_pin, false);
-		if (ret < 0)
-			goto out:
 	}
-
+	dev->exit(dev);
 out:
 	ret = asprintf(&insert, "/usr/sbin/modprobe -q -r %s", module);
 	if (ret < 0)
@@ -95,7 +101,7 @@ out:
 	system(remove);
 }
 
-void summary(int err)
+static void summary(int err)
 {
 	if (err > 0)
 		fprintf(stderr, "GPIO test with %d error\n", err);
@@ -116,7 +122,7 @@ int main(int argc, char *argv[])
 	prerequisite();
 	for (i = 0; i< sizeof(gpio_testcases)/sizeof(struct gpio_testcase_t);
 	     i++ ) {
-		if (test(module, gpio_testcases[i]) < 0)
+		if (gpio_test(module, gpio_testcases[i]) < 0)
 			err++;
 	}
 	summary(err);
