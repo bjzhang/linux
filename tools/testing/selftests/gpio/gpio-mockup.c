@@ -1,12 +1,14 @@
 
 #include <stdio.h>
 #include <stdbool.h>
-#include <stdlib.h>	//for system
+#include <stdlib.h>	//for system, random
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include "gpio-mockup.h"
 
-#define MAX_GC 5
 struct gpio_testcase_t {
-	bool is_valid_gc;
+	bool is_valid;
 	char ranges[];
 } gpio_testcases[] = {
 	//1.  Do basic test: successful means insert gpiochip and manipulate gpio pin successful
@@ -48,47 +50,43 @@ static void prerequisite()
 	printf("uid<%d>, euid<%d>\n", getuid(), geteuid());
 }
 
-static int gpio_test(const char *module, struct gpio_testcase_t *tc)
+static int gpio_test(struct gpio_device *dev, const char *module,
+		struct gpio_testcase_t *tc)
 {
 	int i;
 	int offset = 0;
 	char *insert;
 	char *remove;
+	int status;
 	int ret;
-	struct gpio_device *dev;
 
 	ret = asprintf(&insert, "/usr/sbin/modprobe -q %s gpio_mockup_ranges=\"%s\"", module, tc->ranges);
 	if (ret < 0)
 		return -1;
 
-	//TODO: check whether range conflict with existing gpio drivers
 	system(insert);
 	//TODO error check
-
-	//TODO default char dev
-	if (0)
-		dev = gpio_chardev;
-	else
-		dev = gpio_sysfs;
+	if (WIFEXITED(status))
+		printf("exited, status=%d\n", WEXITSTATUS(status));
 
 	dev->name = module;
 	if (dev->init(dev))
 		return -1;
 
 	dev->list(dev);
-	if (!tc->is_valid_gc && dev->nchips > 0)
+	if (!tc->is_valid && dev->nchips > 0)
 		return -1;
 
-	if (tc->is_valid_gc) {
+	if (tc->is_valid) {
 		if (dev->nchips == 0)
 			return -1;
 
 		if(dev->test) {
 			for (i = 0; i < dev->nchips; i++) {
 				struct gpio_chip *chip = dev->chips[i];
-				dev->test(dev, chip->base, true);
-				dev->test(dev, chip->base + chip->ngpio - 1, true);
-				dev->test(dev, random(chip->base, chip->base + chip->ngpio - 1), true);
+				dev->test(dev, chip->base);
+				dev->test(dev, chip->base + chip->ngpio - 1);
+				dev->test(dev, random() % chip->ngpio + chip->base);
 			}
 		}
 	}
@@ -99,32 +97,88 @@ out:
 		return -1;
 
 	system(remove);
+	if (WIFEXITED(status))
+		printf("exited, status=%d\n", WEXITSTATUS(status));
+
+	return 0;
 }
 
 static void summary(int err)
 {
 	if (err > 0)
-		fprintf(stderr, "GPIO test with %d error\n", err);
+		fprintf(stderr, "GPIO test with %d error(s)\n", err);
 	else
 		printf ("GPIO test PASS\n");
+
+}
+
+int pin_get_debugfs(struct gpio_device *dev, int nr,
+		struct gpio_pin_status *status)
+{
+	int fd;
+	char *line;
+	char *name;
+	char *cur;
+
+	fd = open(dev->debugfs, O_RDONLY);
+	if (fd == -1)
+		return -errno;
+
+	//append space to full word match
+	asprintf(name, "gpio-%d ", nr);
+	while(line = readline(NULL)) {
+		// gpio-2   (                    |sysfs               ) in  lo
+		if (strstr(line, name)) {
+			cur = strchr(line, ")");
+			if (cur) {
+				cur += 2;
+				if (!strncmp(cur, "out", 3)) {
+					status->dir = OUT;
+					cur += 4;
+				} else if (!strncmp(cur, "in", 2)) {
+					status->dir = IN;
+					cur += 3;
+				}
+
+				if (!strncmp(cur, "hi", 2))
+					status->value = true;
+				else if (!strncmp(cur, "lo", 2))
+					status->value = false;
+
+				break;
+			}
+		}
+		free(line);
+		line = NULL;
+	}
+	free(line);
+	free(name);
+	return 0;
 }
 
 int main(int argc, char *argv[])
 {
+	struct gpio_device *dev;
 	char *module;
 	int err = 0;
 	int i;
 
 	//TODO: paramter:
-	//-m module_name
-	//-t "force one test case"
-	//-s "force use sysfs interface no matter char device exist or not".
+	//-m module_name: default gpio-mockup
+	//-i char/sysfs
+	if (is_char)
+		dev = gpio_chardev;
+	else
+		dev = gpio_sysfs;
+
 	prerequisite();
 	for (i = 0; i< sizeof(gpio_testcases)/sizeof(struct gpio_testcase_t);
 	     i++ ) {
-		if (gpio_test(module, gpio_testcases[i]) < 0)
+		if (gpio_test(dev, module, gpio_testcases[i]) < 0)
 			err++;
 	}
 	summary(err);
+
+	return err > 0 ? -1 : 0;
 }
 
