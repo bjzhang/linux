@@ -1,6 +1,7 @@
 
 TEST_PROGS := gpio-mockup
-OBJS := gpio-sysfs.o gpio-chardev.o
+#OBJS := gpio-sysfs.o gpio-chardev.o
+OBJS := gpio-sysfs.o
 
 $(TEST_PROGS): $(OBJS)
 

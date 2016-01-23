@@ -2,9 +2,13 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>	//for system, random
+#include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <errno.h>
+#include <readline/readline.h>
+#include <readline/history.h>
 #include "gpio-mockup.h"
 
 struct gpio_testcase_t {
@@ -83,7 +87,7 @@ static int gpio_test(struct gpio_device *dev, const char *module,
 
 		if(dev->test) {
 			for (i = 0; i < dev->nchips; i++) {
-				struct gpio_chip *chip = dev->chips[i];
+				struct gpio_chip *chip = &dev->chips[i];
 				dev->test(dev, chip->base);
 				dev->test(dev, chip->base + chip->ngpio - 1);
 				dev->test(dev, random() % chip->ngpio + chip->base);
@@ -115,42 +119,44 @@ static void summary(int err)
 int pin_get_debugfs(struct gpio_device *dev, int nr,
 		struct gpio_pin_status *status)
 {
-	int fd;
-	char *line;
+	FILE *f;
+	char *line = NULL;
+	size_t len = 0;
 	char *name;
 	char *cur;
 
-	fd = open(dev->debugfs, O_RDONLY);
-	if (fd == -1)
+	f = fopen(dev->debugfs, "r");
+	if (!f)
 		return -errno;
 
 	//append space to full word match
 	asprintf(name, "gpio-%d ", nr);
-	while(line = readline(NULL)) {
+	while(getline(&line, &len, f) != -1) {
 		// gpio-2   (                    |sysfs               ) in  lo
-		if (strstr(line, name)) {
-			cur = strchr(line, ")");
-			if (cur) {
-				cur += 2;
-				if (!strncmp(cur, "out", 3)) {
-					status->dir = OUT;
-					cur += 4;
-				} else if (!strncmp(cur, "in", 2)) {
-					status->dir = IN;
-					cur += 3;
-				}
+		if (!strstr(line, name))
+			continue;
 
-				if (!strncmp(cur, "hi", 2))
-					status->value = true;
-				else if (!strncmp(cur, "lo", 2))
-					status->value = false;
+		cur = strchr(line, ')');
+		if (!cur)
+			continue;
 
-				break;
-			}
+		cur += 2;
+		if (!strncmp(cur, "out", 3)) {
+			status->dir = OUT;
+			cur += 4;
+		} else if (!strncmp(cur, "in", 2)) {
+			status->dir = IN;
+			cur += 3;
 		}
-		free(line);
-		line = NULL;
+
+		if (!strncmp(cur, "hi", 2))
+			status->value = true;
+		else if (!strncmp(cur, "lo", 2))
+			status->value = false;
+
+		break;
 	}
+	fclose(f);
 	free(line);
 	free(name);
 	return 0;
@@ -161,23 +167,46 @@ int main(int argc, char *argv[])
 	struct gpio_device *dev;
 	char *module;
 	int err = 0;
+	bool is_char = true;
+	int opt;
 	int i;
 
-	//TODO: paramter:
-	//-m module_name: default gpio-mockup
-	//-i char/sysfs
+	while ((opt = getopt(argc, argv, "m:i:")) != -1) {
+		switch (opt) {
+		case 'm':
+			module = strdup(optarg);
+			break;
+		case 'i':
+			if (!strcmp(optarg, "sysfs"))
+				is_char = false;
+
+			break;
+		default: /* '?' */
+			fprintf(stderr, "Usage: %s -m module -i chardev/sysfs\n",
+			   argv[0]);
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	if (optind >= argc) {
+		fprintf(stderr, "Expected argument after options\n");
+		exit(EXIT_FAILURE);
+	}
+
 	if (is_char)
-		dev = gpio_chardev;
+//		dev = gpio_chardev;
+		exit(EXIT_FAILURE);
 	else
-		dev = gpio_sysfs;
+		dev = &gpio_sysfs;
 
 	prerequisite();
 	for (i = 0; i< sizeof(gpio_testcases)/sizeof(struct gpio_testcase_t);
 	     i++ ) {
-		if (gpio_test(dev, module, gpio_testcases[i]) < 0)
+		if (gpio_test(dev, module, &gpio_testcases[i]) < 0)
 			err++;
 	}
 	summary(err);
+	free(module);
 
 	return err > 0 ? -1 : 0;
 }

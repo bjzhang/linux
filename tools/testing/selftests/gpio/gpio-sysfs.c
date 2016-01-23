@@ -332,7 +332,10 @@ static int list(struct gpio_device *dev)
 		(struct _gpio_sysfs_private*)dev->private;
 	DIR *dir;
 	struct dirent *ptr;
+	struct gpio_chip *chip;
 	int count = 10;
+	char *path;
+	char *value;
 
 	dev->chips = (struct gpio_chip*)malloc(sizeof(struct gpio_chip) * count);
 	if (!dev->chips)
@@ -348,7 +351,18 @@ static int list(struct gpio_device *dev)
 			dev->chips = (struct gpio_chip*)realloc(dev->chips,
 					sizeof(struct gpio_chip) * count);
 		}
-		dev->chips[dev->nchips].name = strdup(ptr->d_name);
+		chip = &dev->chips[dev->nchips];
+		chip->name = strdup(ptr->d_name);
+		asprintf(path, "%s/%s/base", private->device, chip->name);
+		sysfs_read(path, &value);
+		chip->base = atoi(value);
+		free(path);
+		free(value);
+		asprintf(path, "%s/%s/ngpio", private->device, chip->name);
+		sysfs_read(path, &value);
+		chip->ngpio = atoi(value);
+		free(path);
+		free(value);
 		dev->nchips++;
 	}
 	dev->chips = (struct gpio_chip*)realloc(dev->chips,

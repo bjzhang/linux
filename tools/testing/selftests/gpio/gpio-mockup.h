@@ -3,12 +3,15 @@
 #define GPIO_MOCKUP_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 struct gpio_device gpio_sysfs;
 struct gpio_device gpio_chardev;
 
 struct gpio_chip {
-	char *name;
+	char		*name;
+	int		base;
+	uint16_t	ngpio;
 };
 
 enum direction
@@ -27,10 +30,10 @@ struct gpio_pin_status {
 };
 
 struct gpio_device {
-	char *name;
+	const char *name;
 	struct gpio_chip *chips;
 	int nchips;
-	char *debugfs;
+	const char *debugfs;
 	int (*init)(struct gpio_device *dev);
 	void (*exit)(struct gpio_device *dev);
 	int (*list)(struct gpio_device *dev);
