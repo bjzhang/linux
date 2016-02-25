@@ -41,7 +41,7 @@ prerequisite()
 		exit 2
 	fi
 	GPIO_SYSFS=`echo $SYSFS/class/gpio`
-	GPIO_DRV_SYSFS=`echo $SYSFS/devices/platform/$module`
+	GPIO_DRV_SYSFS=`echo $SYSFS/devices/platform/$module/gpio`
 	DEBUGFS=`mount -t debugfs | head -1 | awk '{ print $3 }'`
 	if [ ! -d "$DEBUGFS" ]; then
 		echo $msg debugfs is not mounted >&2
