@@ -437,7 +437,6 @@ static void gpiodevice_release(struct device *dev)
 {
 	struct gpio_device *gdev = dev_get_drvdata(dev);
 
-	cdev_del(&gdev->chrdev);
 	list_del(&gdev->list);
 	ida_simple_remove(&gpio_ida, gdev->id);
 	kfree(gdev);
@@ -618,7 +617,6 @@ int gpiochip_add_data(struct gpio_chip *chip, void *data)
 
 	/* From this point, the .release() function cleans up gpio_device */
 	gdev->dev.release = gpiodevice_release;
-	get_device(&gdev->dev);
 	pr_debug("%s: registered GPIOs %d to %d on device: %s (%s)\n",
 		 __func__, gdev->base, gdev->base + gdev->ngpio - 1,
 		 dev_name(&gdev->dev), chip->label ? : "generic");
@@ -698,12 +696,8 @@ void gpiochip_remove(struct gpio_chip *chip)
 		dev_crit(&gdev->dev,
 			 "REMOVING GPIOCHIP WITH GPIOS STILL REQUESTED\n");
 
-	/*
-	 * The gpiochip side puts its use of the device to rest here:
-	 * if there are no userspace clients, the chardev and device will
-	 * be removed, else it will be dangling until the last user is
-	 * gone.
-	 */
+	device_del(&gdev->dev);
+	cdev_del(&gdev->chrdev);
 	put_device(&gdev->dev);
 }
 EXPORT_SYMBOL_GPL(gpiochip_remove);
