@@ -75,15 +75,11 @@ die()
 	exit 4
 }
 
+#gpio chardev could not know how many gpiochip is belong to a gpio module.
 list_chip()
 {
 	name=$1
-	if [ X$dev_type = Xsysfs ]; then
-		gc=`list_chip_sysfs $name`
-	else
-		#FIXME: gpio chardev could not check for specific gpio driver.
-		gc=`lsgpio 2>/dev/null`
-	fi
+	gc=`list_chip_sysfs $name`
 	echo $gc
 }
 
