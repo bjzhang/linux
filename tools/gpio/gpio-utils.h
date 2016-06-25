@@ -24,4 +24,12 @@ static inline int check_prefix(const char *str, const char *prefix)
 		strncmp(str, prefix, strlen(prefix)) == 0;
 }
 
+int gpio_get(const char *device_name, unsigned int line, unsigned int flag);
+int gpio_gets(const char *device_name, unsigned int *lines, unsigned nlines,
+	      unsigned int flag, struct gpiohandle_data *data);
+int gpio_set(const char *device_name, unsigned int line, unsigned int flag,
+	     unsigned int value);
+int gpio_sets(const char *device_name, unsigned int *lines, unsigned int nlines,
+	      unsigned int flag, struct gpiohandle_data *data);
+
 #endif /* _GPIO_UTILS_H_ */
