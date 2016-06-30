@@ -1,5 +1,5 @@
 CC = $(CROSS_COMPILE)gcc
-CFLAGS += -O2 -Wall -g -D_GNU_SOURCE
+CFLAGS += -O2 -Wall -g -D_GNU_SOURCE -I/home/z00293696/works/source/kernel/upstream/usr/include
 
 all: lsgpio gpio-hammer gpio-event-mon
 

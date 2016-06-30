@@ -345,10 +345,13 @@ static long linehandle_ioctl(struct file *filep, unsigned int cmd,
 
 		/* TODO: check if descriptors are really input */
 		for (i = 0; i < lh->numdescs; i++) {
+			pr_info("%s: GET from hardware\n", __FUNCTION__);
 			val = gpiod_get_value_cansleep(lh->descs[i]);
 			if (val < 0)
 				return val;
 			ghd.values[i] = val;
+			pr_info("%s: GET: offset<%d>, value<%d>\n",
+				__FUNCTION__, i, ghd.values[i]);
 		}
 
 		if (copy_to_user(ip, &ghd, sizeof(ghd)))
@@ -363,9 +366,13 @@ static long linehandle_ioctl(struct file *filep, unsigned int cmd,
 			return -EFAULT;
 
 		/* Clamp all values to [0,1] */
-		for (i = 0; i < lh->numdescs; i++)
+		for (i = 0; i < lh->numdescs; i++) {
 			vals[i] = !!ghd.values[i];
+			pr_info("%s: SET: offset<%d>, value<%d>\n",
+				__FUNCTION__, i, vals[i]);
+		}
 
+		pr_info("%s: SET to hardware\n", __FUNCTION__);
 		/* Reuse the array setting function */
 		gpiod_set_array_value_complex(false,
 					      true,
@@ -494,6 +501,7 @@ static int linehandle_create(struct gpio_device *gdev, void __user *ip)
 	dev_dbg(&gdev->dev, "registered chardev handle for %d lines\n",
 		lh->numdescs);
 
+	pr_info("%s: GPIO_GET_LINEHANDLE_IOCTL return\n", __FUNCTION__);
 	return 0;
 
 out_free_descs:
@@ -877,6 +885,7 @@ static long gpio_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			return -EFAULT;
 		return 0;
 	} else if (cmd == GPIO_GET_LINEHANDLE_IOCTL) {
+		pr_info("%s: GPIO_GET_LINEHANDLE_IOCTL\n", __FUNCTION__);
 		return linehandle_create(gdev, ip);
 	} else if (cmd == GPIO_GET_LINEEVENT_IOCTL) {
 		return lineevent_create(gdev, ip);

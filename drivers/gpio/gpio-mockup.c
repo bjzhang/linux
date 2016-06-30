@@ -20,8 +20,8 @@
 #define	MAX_GC		10
 
 enum direction {
-	IN,
-	OUT
+	OUT,
+	IN
 };
 
 /*
@@ -51,6 +51,8 @@ mockup_gpio_get(struct gpio_chip *gc, unsigned offset)
 	struct mockup_gpio_controller *cntr = container_of(gc,
 			struct mockup_gpio_controller, gc);
 
+	pr_info("GET: offset<%d>, value<%d>\n", offset,
+		cntr->stats[offset].value);
 	return cntr->stats[offset].value;
 }
 
@@ -60,6 +62,7 @@ mockup_gpio_set(struct gpio_chip *gc, unsigned offset, int value)
 	struct mockup_gpio_controller *cntr = container_of(gc,
 			struct mockup_gpio_controller, gc);
 
+	pr_info("SET: offset<%d>, value<%d>\n", offset, value);
 	cntr->stats[offset].value = !!value;
 }
 
@@ -69,6 +72,7 @@ mockup_gpio_dirout(struct gpio_chip *gc, unsigned offset, int value)
 	struct mockup_gpio_controller *cntr = container_of(gc,
 			struct mockup_gpio_controller, gc);
 
+	pr_info("DIROUT: offset<%d>, value<%d>\n", offset, value);
 	mockup_gpio_set(gc, offset, value);
 	cntr->stats[offset].dir = OUT;
 	return 0;
@@ -80,6 +84,7 @@ mockup_gpio_dirin(struct gpio_chip *gc, unsigned offset)
 	struct mockup_gpio_controller *cntr = container_of(gc,
 			struct mockup_gpio_controller, gc);
 
+	pr_info("DIRIN: offset<%d>\n", offset);
 	cntr->stats[offset].dir = IN;
 	return 0;
 }
@@ -90,6 +95,8 @@ mockup_gpio_get_direction(struct gpio_chip *gc, unsigned offset)
 	struct mockup_gpio_controller *cntr = container_of(gc,
 			struct mockup_gpio_controller, gc);
 
+	pr_info("GET_DIR: offset<%d>, dir<%d>\n", offset,
+		cntr->stats[offset].dir);
 	return cntr->stats[offset].dir;
 }
 
