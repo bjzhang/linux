@@ -445,7 +445,7 @@ void __init init_cpu_features(struct cpuinfo_arm64 *info)
 	init_cpu_ftr_reg(SYS_ID_AA64ISAR1_EL1, info->reg_id_aa64isar1);
 	init_cpu_ftr_reg(SYS_ID_AA64MMFR0_EL1, info->reg_id_aa64mmfr0);
 	init_cpu_ftr_reg(SYS_ID_AA64MMFR1_EL1, info->reg_id_aa64mmfr1);
-	init_cpu_ftr_reg(SYS_ID_AA64MMFR2_EL1, info->reg_id_aa64mmfr2);
+	//init_cpu_ftr_reg(SYS_ID_AA64MMFR2_EL1, info->reg_id_aa64mmfr2);
 	init_cpu_ftr_reg(SYS_ID_AA64PFR0_EL1, info->reg_id_aa64pfr0);
 	init_cpu_ftr_reg(SYS_ID_AA64PFR1_EL1, info->reg_id_aa64pfr1);
 
@@ -559,8 +559,8 @@ void update_cpu_features(int cpu,
 				      info->reg_id_aa64mmfr0, boot->reg_id_aa64mmfr0);
 	taint |= check_update_ftr_reg(SYS_ID_AA64MMFR1_EL1, cpu,
 				      info->reg_id_aa64mmfr1, boot->reg_id_aa64mmfr1);
-	taint |= check_update_ftr_reg(SYS_ID_AA64MMFR2_EL1, cpu,
-				      info->reg_id_aa64mmfr2, boot->reg_id_aa64mmfr2);
+	//taint |= check_update_ftr_reg(SYS_ID_AA64MMFR2_EL1, cpu,
+		//		      info->reg_id_aa64mmfr2, boot->reg_id_aa64mmfr2);
 
 	/*
 	 * EL3 is not our concern.
@@ -665,7 +665,8 @@ static u64 __raw_read_system_reg(u32 sys_id)
 	case SYS_ID_AA64DFR1_EL1:	return read_cpuid(ID_AA64DFR0_EL1);
 	case SYS_ID_AA64MMFR0_EL1:	return read_cpuid(ID_AA64MMFR0_EL1);
 	case SYS_ID_AA64MMFR1_EL1:	return read_cpuid(ID_AA64MMFR1_EL1);
-	case SYS_ID_AA64MMFR2_EL1:	return read_cpuid(ID_AA64MMFR2_EL1);
+	//case SYS_ID_AA64MMFR2_EL1:	return read_cpuid(ID_AA64MMFR2_EL1);
+	case SYS_ID_AA64MMFR2_EL1:	return 0;
 	case SYS_ID_AA64ISAR0_EL1:	return read_cpuid(ID_AA64ISAR0_EL1);
 	case SYS_ID_AA64ISAR1_EL1:	return read_cpuid(ID_AA64ISAR1_EL1);
 
