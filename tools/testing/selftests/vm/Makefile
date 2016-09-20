@@ -15,7 +15,7 @@ TEST_GEN_FILES += mlock-random-test
 
 all: $(TEST_GEN_FILES)
 
-userfaultfd: userfaultfd.c ../../../../usr/include/linux/kernel.h
+$(OUTPUT)userfaultfd: userfaultfd.c ../../../../usr/include/linux/kernel.h
 	$(CC) $(CFLAGS) -O2 -o $@ $< -lpthread
 
 mlock-random-test: mlock-random-test.c

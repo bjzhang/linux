@@ -10,4 +10,4 @@ include ../../lib.mk
 $(TEST_GEN_PROGS): $(EXTRA_SOURCES)
 
 clean:
-	$(RM) $(TEST_GEN_PROGS) *.o
+	$(RM) $(TEST_GEN_PROGS) $(OUTPUT)*.o

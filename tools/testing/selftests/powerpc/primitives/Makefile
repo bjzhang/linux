@@ -7,4 +7,4 @@ include ../../lib.mk
 $(TEST_GEN_PROGS): ../harness.c
 
 clean:
-	$(RM) $(TEST_GEN_PROGS) *.o
+	$(RM) $(TEST_GEN_PROGS) $(OUTPUT)*.o
