@@ -7,9 +7,9 @@ $(TEST_GEN_PROGS): ../harness.c ../utils.c
 
 CFLAGS += -mhtm
 
-tm-syscall: tm-syscall-asm.S
-tm-syscall: CFLAGS += -I../../../../../usr/include
-tm-tmspr: CFLAGS += -pthread
+$(OUTPUT)tm-syscall: tm-syscall-asm.S
+$(OUTPUT)tm-syscall: CFLAGS += -I../../../../../usr/include
+$(OUTPUT)tm-tmspr: CFLAGS += -pthread
 
 clean:
-	$(RM) $(TEST_GEN_PROGS) *.o
+	$(RM) $(TEST_GEN_PROGS) $(OUTPUT)*.o

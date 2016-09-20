@@ -4,7 +4,7 @@
 ARCH ?= $(shell uname -m)
 ARCH := $(shell echo $(ARCH) | sed -e s/ppc.*/powerpc/)
 
-ifeq ($(ARCH),powerpc)
+#ifeq ($(ARCH),powerpc)
 
 GIT_VERSION = $(shell git describe --always --long --dirty || echo "unknown")
 
@@ -27,36 +27,40 @@ SUB_DIRS = alignment		\
 	   vphn         \
 	   math
 
-endif
+#endif
 
 all: $(SUB_DIRS)
 
 $(SUB_DIRS):
-	$(MAKE) -k -C $@ all
+	BUILD_TARGET=$$OUTPUT/$@; mkdir -p $$BUILD_TARGET; $(MAKE) OUTPUT=$$BUILD_TARGET/ -k -C $@ all
 
 include ../lib.mk
 
 override define RUN_TESTS
 	@for TARGET in $(SUB_DIRS); do \
-		$(MAKE) -C $$TARGET run_tests; \
+		BUILD_TARGET=$$OUTPUT/$$TARGET;	\
+		$(MAKE) OUTPUT=$$BUILD_TARGET/ -C $$TARGET run_tests;\
 	done;
 endef
 
 override define INSTALL_RULE
 	@for TARGET in $(SUB_DIRS); do \
-		$(MAKE) -C $$TARGET install; \
+		BUILD_TARGET=$$OUTPUT/$$TARGET;	\
+		$(MAKE) OUTPUT=$$BUILD_TARGET/ -C $$TARGET install;\
 	done;
 endef
 
 override define EMIT_TESTS
 	@for TARGET in $(SUB_DIRS); do \
-		$(MAKE) -s -C $$TARGET emit_tests; \
+		BUILD_TARGET=$$OUTPUT/$$TARGET;	\
+		$(MAKE) OUTPUT=$$BUILD_TARGET/ -s -C $$TARGET emit_tests;\
 	done;
 endef
 
 clean:
 	@for TARGET in $(SUB_DIRS); do \
-		$(MAKE) -C $$TARGET clean; \
+		BUILD_TARGET=$$OUTPUT/$$TARGET;	\
+		$(MAKE) OUTPUT=$$BUILD_TARGET/ -C $$TARGET clean;\
 	done;
 	rm -f tags
 

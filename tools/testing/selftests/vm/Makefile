@@ -14,7 +14,7 @@ TEST_GEN_FILES += userfaultfd
 
 all: $(BINARIES)
 
-userfaultfd: userfaultfd.c ../../../../usr/include/linux/kernel.h
+$(OUTPUT)userfaultfd: userfaultfd.c ../../../../usr/include/linux/kernel.h
 	$(CC) $(CFLAGS) -O2 -o $@ $< -lpthread
 
 ../../../../usr/include/linux/kernel.h:
