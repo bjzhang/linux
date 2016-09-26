@@ -1,7 +1,7 @@
 all:
 
 TEST_PROGS := ftracetest
-TEST_FILES := test.d
+TEST_DIRS := test.d
 
 include ../lib.mk
 
