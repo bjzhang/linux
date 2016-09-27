@@ -1,9 +1,9 @@
-TEST_PROGS := fpu_syscall fpu_preempt fpu_signal vmx_syscall vmx_preempt vmx_signal
+TEST_GEN_PROGS := fpu_syscall fpu_preempt fpu_signal vmx_syscall vmx_preempt vmx_signal
 
-all: $(TEST_PROGS)
+include ../../lib.mk
 
-$(TEST_PROGS): ../harness.c
-$(TEST_PROGS): CFLAGS += -O2 -g -pthread -m64 -maltivec
+$(TEST_GEN_PROGS): ../harness.c
+$(TEST_GEN_PROGS): CFLAGS += -O2 -g -pthread -m64 -maltivec
 
 fpu_syscall: fpu_asm.S
 fpu_preempt: fpu_asm.S
@@ -13,7 +13,5 @@ vmx_syscall: vmx_asm.S
 vmx_preempt: vmx_asm.S
 vmx_signal: vmx_asm.S
 
-include ../../lib.mk
-
 clean:
-	rm -f $(TEST_PROGS) *.o
+	$(RM) $(TEST_GEN_PROGS) *.o
