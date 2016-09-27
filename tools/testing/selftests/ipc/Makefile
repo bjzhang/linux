@@ -11,9 +11,6 @@ endif
 
 CFLAGS += -I../../../../usr/include/
 
-
-all:
-	$(CC) $(CFLAGS) msgque.c -o msgque_test
 TEST_GEN_PROGS := msgque_test
 
 include ../lib.mk
