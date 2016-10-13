@@ -30,18 +30,24 @@ int hammer_device(const char *device_name, unsigned int *lines, int nlines,
 {
 	struct gpiohandle_data data;
 	char swirr[] = "-\\|/";
+	int fd;
 	int ret;
 	int i, j;
 	unsigned int iteration = 0;
 
-	/* Do not set input or output to avoid change direction or value */
-	ret = gpio_gets(device_name, lines, nlines, 0, &data);
-	if (ret < 0) {
-		fprintf(stderr, "Failed to issue GPIOHANDLE GET LINE "
-			"VALUES IOCTL (%d)\n",
-			ret);
+	memset(&data.values, 0, sizeof(data.values));
+	ret = gpiotools_request_linehandle(device_name, lines, nlines,
+					   GPIOHANDLE_REQUEST_OUTPUT, &data,
+					   "gpio-hammler");
+	if (ret < 0)
+		goto exit_error;
+	else
+		fd = ret;
+
+	ret = gpiotools_get_values(fd, data);
+	if (ret < 0)
 		goto exit_close_error;
-	}
+
 	fprintf(stdout, "Hammer lines [");
 	for (i = 0; i < nlines; i++) {
 		fprintf(stdout, "%d", lines[i]);
@@ -63,21 +69,13 @@ int hammer_device(const char *device_name, unsigned int *lines, int nlines,
 		for (i = 0; i < nlines; i++)
 			data.values[i] = !data.values[i];
 
-		ret = gpio_sets(device_name, lines, nlines,
-				GPIOHANDLE_REQUEST_OUTPUT, &data);
+		ret = gpiotools_set_values(fd, &data);
 		if (ret < 0) {
-			fprintf(stderr, "Failed to issue GPIOHANDLE SET LINE "
-				"VALUES IOCTL (%d)\n",
-				ret);
 			goto exit_close_error;
 		}
 		/* Re-read values to get status */
-		ret = gpio_gets(device_name, lines, nlines,
-				GPIOHANDLE_REQUEST_OUTPUT, &data);
+		ret = gpiotools_get_values(fd, &data);
 		if (ret < 0) {
-			fprintf(stderr, "Failed to issue GPIOHANDLE GET LINE "
-				"VALUES IOCTL (%d)\n",
-				ret);
 			goto exit_close_error;
 		}
 
@@ -103,6 +101,8 @@ int hammer_device(const char *device_name, unsigned int *lines, int nlines,
 	ret = 0;
 
 exit_close_error:
+	gpiotools_release_linehandle(fd);
+exit_error:
 	return ret;
 }
 
