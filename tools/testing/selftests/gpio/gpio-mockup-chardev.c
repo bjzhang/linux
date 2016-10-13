@@ -202,7 +202,7 @@ int gpio_pin_test(struct gpiochip_info *cinfo, int line, int flag, int value)
 	int ret;
 
 	data.values[0] = value;
-	ret = gpio_request(cinfo->name, lines, 1, flag, &data, CONSUMER);
+	ret = gpiotools_request_linehandle(cinfo->name, lines, 1, flag, &data, CONSUMER);
 	if (ret < 0)
 		goto fail_out;
 	else
@@ -228,7 +228,7 @@ int gpio_pin_test(struct gpiochip_info *cinfo, int line, int flag, int value)
 
 	}
 
-	gpio_release(fd);
+	gpiotools_release_linehandle(fd);
 fail_out:
 	if (ret)
 		err(EXIT_FAILURE, "gpio<%s> line<%d> test flag<0x%x> value<%d>",
