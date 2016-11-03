@@ -73,6 +73,8 @@
 #include <asm/tlbflush.h>
 #include <asm/pgtable.h>
 
+#include <linux/moduleparam.h>
+
 #include "internal.h"
 
 #ifdef LAST_CPUPID_NOT_IN_PAGE_FLAGS
@@ -134,7 +136,17 @@ static int __init init_zero_pfn(void)
 }
 core_initcall(init_zero_pfn);
 
-
+/*
+ * 0: disable. the original code
+ * 1: disable cont. the upstream plan
+ * 10: enable cont when possible. the upstream plan
+ */
+/*
+ * static int cont_page_test = 1;
+ * module_param(cont_page_test, int, 0);
+ */
+int cont_page_test __read_mostly = 0;
+int cont_page_debug __read_mostly = 0;
 #if defined(SPLIT_RSS_COUNTING)
 
 void sync_mm_rss(struct mm_struct *mm)
@@ -2699,7 +2711,9 @@ out_release:
  * except we must first make sure that 'address{-|+}PAGE_SIZE'
  * doesn't hit another vma.
  */
-static inline int check_stack_guard_page(struct vm_area_struct *vma, unsigned long address)
+static inline int check_stack_guard_page(struct vm_area_struct *vma,
+					 unsigned long address,
+					 unsigned long num_of_cont_page)
 {
 	address &= PAGE_MASK;
 	if ((vma->vm_flags & VM_GROWSDOWN) && address == vma->vm_start) {
@@ -2733,20 +2747,73 @@ static inline int check_stack_guard_page(struct vm_area_struct *vma, unsigned lo
  * but allow concurrent faults), and pte mapped but not yet locked.
  * We return with mmap_sem still held, but pte unmapped and unlocked.
  */
+/*
+ * We could change fe->pte safely because we exit handle_pte_fault
+ * after exit do_anonymous_page. And fe is allocated in
+ * __handle_mm_fault.
+ * There is no need to set the flat of cont pte because we only do the
+ * cont when 16 contiguous pages align with 16 * PAGE_SIZE of start address.
+ */
+#define num_of_cont_page (16)
+#define printk_vm_limited(format, arg...)		\
+do {							\
+	static DEFINE_RATELIMIT_STATE(_rs,		\
+		10 * HZ /*10 seconds */,		\
+		100);		\
+	if (__ratelimit(&_rs))				\
+		printk(KERN_WARNING, format , ## arg);\
+} while (0)
+/*
+ * FIXME: fix the memcg and userfaultfd later
+ */
 static int do_anonymous_page(struct fault_env *fe)
 {
 	struct vm_area_struct *vma = fe->vma;
 	struct mem_cgroup *memcg;
 	struct page *page;
+	struct page *pages;
 	pte_t entry;
+	pte_t entries[num_of_cont_page];
+	pte_t *ptes[num_of_cont_page];
+	int num_of_page = 1;
+	unsigned long address;
+	int order = 0;
+	int ret;
+	int i;
+	int is_read = 0;
 
 	/* File mapping without ->vm_ops ? */
 	if (vma->vm_flags & VM_SHARED)
 		return VM_FAULT_SIGBUS;
 
 	/* Check if we need to add a guard page to the stack */
-	if (check_stack_guard_page(vma, fe->address) < 0)
+	//TODO: return 1 to indicate we could allocate 16 pages.
+	ret = check_stack_guard_page(vma, fe->address, num_of_cont_page);
+	printk_once(KERN_EMERG "check_stack_guard_page return value: <%d>\n",
+		    ret);
+	if (ret < 0)
 		return VM_FAULT_SIGSEGV;
+
+	/*
+	 * TODO: does check_stack_guard_page affect by this?
+	 * I am not sure at the moment.
+	 */
+	if (cont_page_test == 10) {
+		ret = 1;
+	}
+
+	if (ret > 0							    \
+		&& (fe->address + num_of_cont_page * PAGE_SIZE < vma->vm_end) \
+		&& in_pte(fe->address, 16)				    \
+		&& ALIGN(fe->address, PAGE_SIZE * num_of_cont_page) ) {
+		num_of_page = 16;
+		order =4;
+	}
+	/*
+	 * FIXME: it is useless because it is a pointer. The later code will
+	 * change it.
+	 */
+	//fe->pte = ptes[0];
 
 	/*
 	 * Use pte_alloc() instead of pte_alloc_map().  We can't run
@@ -2768,27 +2835,79 @@ static int do_anonymous_page(struct fault_env *fe)
 	/* Use the zero-page for reads */
 	if (!(fe->flags & FAULT_FLAG_WRITE) &&
 			!mm_forbids_zeropage(vma->vm_mm)) {
-		entry = pte_mkspecial(pfn_pte(my_zero_pfn(fe->address),
-						vma->vm_page_prot));
-		fe->pte = pte_offset_map_lock(vma->vm_mm, fe->pmd, fe->address,
-				&fe->ptl);
-		if (!pte_none(*fe->pte))
-			goto unlock;
+		is_read = 1;
+		if (cont_page_test == 0) {
+			entry = pte_mkspecial(pfn_pte(my_zero_pfn(fe->address),
+						      vma->vm_page_prot));
+			fe->pte = pte_offset_map_lock(vma->vm_mm, fe->pmd, fe->address,
+						      &fe->ptl);
+			if (!pte_none(*fe->pte))
+				goto unlock;
+		} else {
+			address = fe->address;
+			fe->ptl = pte_lockptr(vma->vm_mm, fe->pmd);
+			for (i = 0; i < num_of_page; i++) {
+				entries[i] = pte_mkspecial(pfn_pte(my_zero_pfn(address),
+								   vma->vm_page_prot));
+				ptes[i] = pte_offset_map(fe->pmd, address);
+				if (!pte_none(*ptes[i])) {
+					if (i == 0) {
+						spin_lock(fe->ptl);
+						num_of_page = 1;
+						pr_warn_ratelimited("current address of pte already alloc, unlock and exit\n");
+						goto unlock;
+					} else {
+						spin_lock(fe->ptl);
+						pr_warn_ratelimited("No enough pte(%d) of <%d>, fall back to one pte\n", i, num_of_page);
+						num_of_page = 1;
+						goto setpte;
+
+					}
+				}
+				address += PAGE_SIZE;
+			}
+			spin_lock(fe->ptl);
+		}
 		/* Deliver the page fault to userland, check inside PT lock */
+		/*
+		 * FIXME: CONFIG_USERFAULTFD is disabled, fix the userfaultfd later.
+		 */
 		if (userfaultfd_missing(vma)) {
-			pte_unmap_unlock(fe->pte, fe->ptl);
-			return handle_userfault(fe, VM_UFFD_MISSING);
+			if (cont_page_test == 0) { pte_unmap_unlock(fe->pte, fe->ptl);
+				return handle_userfault(fe, VM_UFFD_MISSING);
+			} else {
+				pte_unmap_unlock(ptes[i], fe->ptl);
+				return handle_userfault(fe, VM_UFFD_MISSING);
+			}
 		}
 		goto setpte;
 	}
 
 	/* Allocate our own private page. */
+	//TODO: do I need to change anon_vma_prepare?
 	if (unlikely(anon_vma_prepare(vma)))
 		goto oom;
-	page = alloc_zeroed_user_highpage_movable(vma, fe->address);
-	if (!page)
-		goto oom;
 
+	if (cont_page_test == 0) {
+		page = alloc_zeroed_user_highpage_movable(vma, fe->address);
+		if (!page)
+			goto oom;
+	} else {
+		pages = alloc_zeroed_user_highpages_movable(vma, fe->address,
+							    order);
+		if (!pages && order == 0)
+			goto oom;
+
+		if (!pages) {
+			order = 0;
+			num_of_page = 1;
+			pages = alloc_zeroed_user_highpages_movable(vma,
+								    fe->address,
+								    order);
+			if(!pages)
+				goto oom;
+		}
+	}
 	if (mem_cgroup_try_charge(page, vma->vm_mm, GFP_KERNEL, &memcg, false))
 		goto oom_free_page;
 
@@ -2797,16 +2916,51 @@ static int do_anonymous_page(struct fault_env *fe)
 	 * preceeding stores to the page contents become visible before
 	 * the set_pte_at() write.
 	 */
-	__SetPageUptodate(page);
+	if (cont_page_test == 0) {
+		__SetPageUptodate(page);
+		entry = mk_pte(page, vma->vm_page_prot);
+		if (vma->vm_flags & VM_WRITE)
+			entry = pte_mkwrite(pte_mkdirty(entry));
+	} else {
+		for (i = 0; i < num_of_page; i++) {
+			__SetPageUptodate(pages + i);
 
-	entry = mk_pte(page, vma->vm_page_prot);
-	if (vma->vm_flags & VM_WRITE)
-		entry = pte_mkwrite(pte_mkdirty(entry));
-
-	fe->pte = pte_offset_map_lock(vma->vm_mm, fe->pmd, fe->address,
-			&fe->ptl);
-	if (!pte_none(*fe->pte))
-		goto release;
+			entries[i] = mk_pte(pages + i, vma->vm_page_prot);
+			if (vma->vm_flags & VM_WRITE)
+				entries[i] = pte_mkwrite(pte_mkdirty(entries[i]));
+		}
+	}
+	if (cont_page_test == 0) {
+		fe->pte = pte_offset_map_lock(vma->vm_mm, fe->pmd, fe->address,
+				&fe->ptl);
+		if (!pte_none(*fe->pte))
+			goto release;
+	} else {
+		address = fe->address;
+		fe->ptl = pte_lockptr(vma->vm_mm, fe->pmd);
+		for (i = 0; i < num_of_page; i++) {
+			ptes[i] = pte_offset_map(fe->pmd, address);
+			if (!pte_none(*ptes[i])) {
+				if (i == 0) {
+					spin_lock(fe->ptl);
+					pr_warn_ratelimited("Current address of pte already alloc, release, unlock and exit\n");
+					goto release;
+				} else {
+					/*
+					 * TODO: fallback to i to avoid free
+					 * pages. But we will not set the
+					 * contiguous bit, if it is not 16
+					 * pages. Is it correct?
+					 */
+					pr_warn_ratelimited("No enough pte(%d) of <%d>, fall back to %d pte(s)\n", i, num_of_page, i);
+					num_of_page = i;
+					break;
+				}
+			}
+			address += PAGE_SIZE;
+		}
+		spin_lock(fe->ptl);
+	}
 
 	/* Deliver the page fault to userland, check inside PT lock */
 	if (userfaultfd_missing(vma)) {
@@ -2817,24 +2971,82 @@ static int do_anonymous_page(struct fault_env *fe)
 	}
 
 	inc_mm_counter_fast(vma->vm_mm, MM_ANONPAGES);
-	page_add_new_anon_rmap(page, vma, fe->address, false);
-	mem_cgroup_commit_charge(page, memcg, false, false);
-	lru_cache_add_active_or_unevictable(page, vma);
+	if (cont_page_test == 0) {
+		page_add_new_anon_rmap(page, vma, fe->address, false);
+		mem_cgroup_commit_charge(page, memcg, false, false);
+		lru_cache_add_active_or_unevictable(page, vma);
+	} else {
+		address = fe->address;
+		for (i = 0; i < num_of_page; i++) {
+			/*
+			 * Should I use the compound?
+			 */
+			page_add_new_anon_rmap(pages + i, vma, address, false);
+			mem_cgroup_commit_charge(pages + i, memcg, false,
+						 false);
+			lru_cache_add_active_or_unevictable(pages + i, vma);
+			address += PAGE_SIZE;
+		}
+	}
 setpte:
-	set_pte_at(vma->vm_mm, fe->address, fe->pte, entry);
+	if (cont_page_test == 0) {
+		set_pte_at(vma->vm_mm, fe->address, fe->pte, entry);
+		/* No need to invalidate - it was non-present before */
+		update_mmu_cache(vma, fe->address, fe->pte);
+	} else {
+		address = fe->address;
 
-	/* No need to invalidate - it was non-present before */
-	update_mmu_cache(vma, fe->address, fe->pte);
+		for (i = 0; i < num_of_page; i++) {
+			if (num_of_page == num_of_cont_page)
+				entries[i] = pte_mkcont(entries[i]);
+
+			set_pte_at(vma->vm_mm, address, ptes[i], entries[i]);
+			/* No need to invalidate - it was non-present before */
+			update_mmu_cache(vma, address, ptes[i]);
+			address += PAGE_SIZE;
+		}
+	}
 unlock:
-	pte_unmap_unlock(fe->pte, fe->ptl);
+	if (cont_page_test == 0) {
+		pte_unmap_unlock(fe->pte, fe->ptl);
+	} else {
+		fe->ptl = pte_lockptr(vma->vm_mm, fe->pmd);
+		spin_unlock(fe->ptl);
+		for (i = 0; i < num_of_page; i++ )
+			pte_unmap(ptes[i]);
+	}
+	if (cont_page_test != 0 && cont_page_debug) {
+		pr_warn_ratelimited("%s %s successful with %d pte(s): addr<0x%lx>, vma <0x%lx> to <0x%lx>\n",
+				    __FUNCTION__, is_read ? "read" : "write",
+				    num_of_page, fe->address, vma->vm_start,
+				    vma->vm_end);
+		for (i = 0; i < num_of_page; i++) {
+			pr_warn_ratelimited("%d entry<0x%llx>, pte<0x%llx>, page<0x%p>\n",
+					    i, pte_val(entries[i]),
+					    pte_val(*ptes[i]), pages + i);
+		}
+	}
+
 	return 0;
 release:
 	mem_cgroup_cancel_charge(page, memcg, false);
-	put_page(page);
+	if (cont_page_test == 0) {
+		put_page(page);
+	} else {
+		pages = page;
+		for (i = 0; i < num_of_page; i++) {
+			put_page(pages + i);
+		}
+	}
 	goto unlock;
 oom_free_page:
 	put_page(page);
 oom:
+	if (cont_page_debug)
+		pr_warn_ratelimited("%s end with fault: addr<0x%lx>, vma <0x%lx> to <0x%lx>\n",
+				    __FUNCTION__, fe->address, vma->vm_start,
+				    vma->vm_end);
+
 	return VM_FAULT_OOM;
 }
 

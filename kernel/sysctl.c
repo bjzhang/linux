@@ -1634,6 +1634,20 @@ static struct ctl_table vm_table[] = {
 		.extra2		= (void *)&mmap_rnd_compat_bits_max,
 	},
 #endif
+	{
+		.procname	= "cont_page_test",
+		.data		= &cont_page_test,
+		.maxlen		= sizeof(cont_page_test),
+		.mode		= 0600,
+		.proc_handler	= proc_dointvec_minmax,
+	},
+	{
+		.procname	= "cont_page_debug",
+		.data		= &cont_page_debug,
+		.maxlen		= sizeof(cont_page_debug),
+		.mode		= 0600,
+		.proc_handler	= proc_dointvec_minmax,
+	},
 	{ }
 };
 
