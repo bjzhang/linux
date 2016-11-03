@@ -99,18 +99,24 @@ pte_alloc_one_kernel(struct mm_struct *mm, unsigned long addr)
 static inline pgtable_t
 pte_alloc_entry(struct mm_struct *mm, unsigned long addr, int num)
 {
-	struct page *pte;
+	struct page *ptes;
         int order = num == 16 ? 4 : 0;
+	int i;
 
-	pte = alloc_pages(PGALLOC_GFP, order);
-	if (!pte)
+	ptes = alloc_pages(PGALLOC_GFP, order);
+	if (!ptes)
 		return NULL;
-	/* TODO init all the page? */
-	if (!pgtable_page_ctor(pte)) {
-		__free_page(pte);
-		return NULL;
+
+	i = 0;
+	for (i = 0; i < num; i++) {
+		if (!pgtable_page_ctor(ptes+i)) {
+			goto fail;
+		}
 	}
-	return pte;
+	return ptes;
+fail:
+	__free_page(ptes);
+	return NULL;
 }
 
 /*
@@ -122,26 +128,26 @@ static inline void pte_free_kernel(struct mm_struct *mm, pte_t *pte)
 		free_page((unsigned long)pte);
 }
 
+static inline void pte_frees(struct mm_struct *mm, pgtable_t pte, int num)
+{
+	int i;
+
+	for(i = 0; i < num; i++) {
+		pgtable_page_dtor(pte + i);
+	}
+	__free_page(pte);
+}
+
 static inline void pte_free(struct mm_struct *mm, pgtable_t pte)
 {
 	pgtable_page_dtor(pte);
 	__free_page(pte);
 }
 
-static inline void __pmd_populates(pmd_t *pmdp, phys_addr_t pte,
-				   pmdval_t prot, int num)
-{
-	int i;
-	for (i = 0; i < num; i++) {
-		/* TODO: how could I know the 16 addessses of pte? */
-		set_pmd(pmdp, __pmd(pte | prot));
-	}
-}
-
 static inline void __pmd_populate(pmd_t *pmdp, phys_addr_t pte,
 				  pmdval_t prot)
 {
-	__pmd_populates(pmdp, pte, prot, 1)
+	set_pmd(pmdp, __pmd(pte | prot));
 }
 
 /*
@@ -160,7 +166,11 @@ pmd_populate_kernel(struct mm_struct *mm, pmd_t *pmdp, pte_t *ptep)
 static inline void
 pmd_populates(struct mm_struct *mm, pmd_t *pmdp, pgtable_t ptep, int num)
 {
-	__pmd_populates(pmdp, page_to_phys(ptep), PMD_TYPE_TABLE, num);
+	int i;
+
+	for (i = 0; i < num; i++) {
+		__pmd_populate(pmdp, page_to_phys(ptep + i), PMD_TYPE_TABLE);
+	}
 }
 
 static inline void

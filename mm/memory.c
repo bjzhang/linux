@@ -134,6 +134,13 @@ static int __init init_zero_pfn(void)
 }
 core_initcall(init_zero_pfn);
 
+/*
+ * 0: disable. the original code
+ * 1: auto mode. the upstream plan
+ * 2: force 16k page when possible
+ */
+int cont_page_test = 0;
+core_param(cont_page_test, cont_page_test, int, 0);
 
 #if defined(SPLIT_RSS_COUNTING)
 
@@ -579,8 +586,7 @@ int __pte_alloc(struct mm_struct *mm, pmd_t *pmd, unsigned long address,
 		int num)
 {
 	spinlock_t *ptl;
-       /*TODO: Where should I store the flat? */
-       pgtable_t new = pte_alloc_entry(mm, address, num);
+	pgtable_t new = pte_alloc_entry(mm, address, num);
 	if (!new)
 		return -ENOMEM;
 
@@ -607,7 +613,7 @@ int __pte_alloc(struct mm_struct *mm, pmd_t *pmd, unsigned long address,
 	}
 	spin_unlock(ptl);
 	if (new)
-		pte_free(mm, new);
+		pte_frees(mm, new, num);
 	return 0;
 }
 
@@ -2741,15 +2747,22 @@ static int do_anonymous_page(struct fault_env *fe)
 	struct mem_cgroup *memcg;
 	struct page *page;
 	pte_t entry;
-        int num_of_pte = 16;
+        int max_num_of_pte;
+        int num_of_pte = 1;
 
 	/* File mapping without ->vm_ops ? */
 	if (vma->vm_flags & VM_SHARED)
 		return VM_FAULT_SIGBUS;
 
 	/* Check if we need to add a guard page to the stack */
-	if (check_stack_guard_page(vma, fe->address) < 0)
+	//TODO: return 1 to indicate we could not allocate 16 pages.
+	ret = check_stack_guard_page(vma, fe->address);
+	if (ret < 0)
 		return VM_FAULT_SIGSEGV;
+	else if (cont_page_test == 2 || (cont_page_test == 1  && ret == 1))
+		max_num_of_pte = 16;
+	else if (ret == 0)
+		max_num_of_pte = 1;
 
 	/*
 	 * Use pte_alloc() instead of pte_alloc_map().  We can't run
@@ -2761,10 +2774,10 @@ static int do_anonymous_page(struct fault_env *fe)
 	 *
 	 * Here we only have down_read(mmap_sem).
 	 */
-        if ( fe->address + 16*page < vma->end)
-                num_of_pte = 16
+        if (fe->address + max_num_of_pte * PAGE_SIZE < vma->vm_end)
+                num_of_pte = 16;
 
-        if (pte_alloc(vma->vm_mm, fe->pmd, fe->address, num_of_pte))
+        if (pte_allocs(vma->vm_mm, fe->pmd, fe->address, num_of_pte))
 		return VM_FAULT_OOM;
 
 	/* See the comment in pte_alloc_one_map() */
