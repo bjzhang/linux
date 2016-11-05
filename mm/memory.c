@@ -2831,12 +2831,12 @@ static int do_anonymous_page(struct fault_env *fe)
 				goto unlock;
 		} else {
 			address = fe->address;
+			fe->ptl = pte_lockptr(vma->vm_mm, fe->pmd);
+			spin_lock(fe->ptl);
 			for (i = 0; i < num_of_pte; i++) {
 				entries[i] = pte_mkspecial(pfn_pte(my_zero_pfn(address),
 								 vma->vm_page_prot));
-				//TODO: do I need lock all the pte pointer?
-				ptes[i] = pte_offset_map_lock(vma->vm_mm, fe->pmd,
-							      address, &fe->ptl);
+				ptes[i] = pte_offset_map(fe->pmd, address);
 				if (!pte_none(*ptes[i]))
 					goto unlock;
 
@@ -2922,8 +2922,9 @@ unlock:
 	if (cont_page_test == 0 || is_read == 0) {
 		pte_unmap_unlock(fe->pte, fe->ptl);
 	} else {
+		spin_unlock(fe->ptl);
 		for (i = 0; i < num_of_pte; i++) {
-			pte_unmap_unlock(ptes[i], fe->ptl);
+			pte_unmap(ptes[i]);
 		}
 	}
 	return 0;
