@@ -1576,8 +1576,7 @@ static inline void mm_dec_nr_pmds(struct mm_struct *mm)
 }
 #endif
 
-int __pte_alloc(struct mm_struct *mm, pmd_t *pmd, unsigned long address,
-		int num);
+int __pte_alloc(struct mm_struct *mm, pmd_t *pmd, unsigned long address);
 int __pte_alloc_kernel(pmd_t *pmd, unsigned long address);
 
 /*
@@ -1714,7 +1713,7 @@ static inline void pgtable_page_dtor(struct page *page)
 		 NULL : pte_offset_map_lock(mm, pmd, address, ptlp))
 
 #define pte_alloc(mm, pmd, address)			\
-	(unlikely(pmd_none(*(pmd))) && __pte_alloc(mm, pmd, address, 1))
+	(unlikely(pmd_none(*(pmd))) && __pte_alloc(mm, pmd, address))
 
 #define pte_alloc_map(mm, pmd, address)			\
 	(pte_alloc(mm, pmd, address) ? NULL : pte_offset_map(pmd, address))
@@ -2458,8 +2457,6 @@ void __init setup_nr_node_ids(void);
 #else
 static inline void setup_nr_node_ids(void) {}
 #endif
-
-extern int cont_page_test;
 
 #endif /* __KERNEL__ */
 #endif /* _LINUX_MM_H */
