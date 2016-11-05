@@ -575,12 +575,10 @@ void free_pgtables(struct mmu_gather *tlb, struct vm_area_struct *vma,
 	}
 }
 
-int __pte_alloc(struct mm_struct *mm, pmd_t *pmd, unsigned long address,
-		int num)
+int __pte_alloc(struct mm_struct *mm, pmd_t *pmd, unsigned long address)
 {
 	spinlock_t *ptl;
-       /*TODO: Where should I store the flat? */
-       pgtable_t new = pte_alloc_entry(mm, address, num);
+	pgtable_t new = pte_alloc_one(mm, address);
 	if (!new)
 		return -ENOMEM;
 
@@ -602,7 +600,7 @@ int __pte_alloc(struct mm_struct *mm, pmd_t *pmd, unsigned long address,
 	ptl = pmd_lock(mm, pmd);
 	if (likely(pmd_none(*pmd))) {	/* Has another populated it ? */
 		atomic_long_inc(&mm->nr_ptes);
-                pmd_populates(mm, pmd, new, 16);
+		pmd_populate(mm, pmd, new);
 		new = NULL;
 	}
 	spin_unlock(ptl);
@@ -2741,7 +2739,6 @@ static int do_anonymous_page(struct fault_env *fe)
 	struct mem_cgroup *memcg;
 	struct page *page;
 	pte_t entry;
-        int num_of_pte = 16;
 
 	/* File mapping without ->vm_ops ? */
 	if (vma->vm_flags & VM_SHARED)
@@ -2761,10 +2758,7 @@ static int do_anonymous_page(struct fault_env *fe)
 	 *
 	 * Here we only have down_read(mmap_sem).
 	 */
-        if ( fe->address + 16*page < vma->end)
-                num_of_pte = 16
-
-        if (pte_alloc(vma->vm_mm, fe->pmd, fe->address, num_of_pte))
+	if (pte_alloc(vma->vm_mm, fe->pmd, fe->address))
 		return VM_FAULT_OOM;
 
 	/* See the comment in pte_alloc_one_map() */

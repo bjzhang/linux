@@ -1702,16 +1702,6 @@ static inline void pgtable_page_dtor(struct page *page)
 	pte_unmap(pte);					\
 } while (0)
 
-#define pte_allocs(mm, pmd, address, num)                       \
-	(unlikely(pmd_none(*(pmd))) && __pte_alloc(mm, pmd, address, num))
-
-#define pte_allocs_map(mm, pmd, address, num)			\
-	(pte_alloc(mm, pmd, address, num) ? NULL : pte_offset_map(pmd, address))
-
-#define pte_allocs_map_lock(mm, pmd, address, ptlp)	\
-	(pte_alloc(mm, pmd, address, num) ?			\
-		 NULL : pte_offset_map_lock(mm, pmd, address, ptlp))
-
 #define pte_alloc(mm, pmd, address)			\
 	(unlikely(pmd_none(*(pmd))) && __pte_alloc(mm, pmd, address))
 
