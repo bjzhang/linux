@@ -141,9 +141,12 @@ core_initcall(init_zero_pfn);
  * 1: disable cont. the upstream plan
  * 10: enable cont when possible. the upstream plan
  */
-static int cont_page_test = 10;
-module_param(cont_page_test, int, 0);
-
+/*
+ * static int cont_page_test = 1;
+ * module_param(cont_page_test, int, 0);
+ */
+int cont_page_test __read_mostly = 0;
+int cont_page_debug __read_mostly = 0;
 #if defined(SPLIT_RSS_COUNTING)
 
 void sync_mm_rss(struct mm_struct *mm)
@@ -2710,7 +2713,7 @@ out_release:
  */
 static inline int check_stack_guard_page(struct vm_area_struct *vma,
 					 unsigned long address,
-					 unsigned long max_num_of_pte)
+					 unsigned long max_num_of_page)
 {
 	address &= PAGE_MASK;
 	if ((vma->vm_flags & VM_GROWSDOWN) && address == vma->vm_start) {
@@ -2751,23 +2754,34 @@ static inline int check_stack_guard_page(struct vm_area_struct *vma,
  * There is no need to set the flat of cont pte because we only do the
  * cont when 16 contiguous pages align with 16 * PAGE_SIZE of start address.
  */
-#define max_num_of_pte (16)
+#define max_num_of_page (16)
+#define printk_vm_limited(format, arg...)		\
+do {							\
+	static DEFINE_RATELIMIT_STATE(_rs,		\
+		10 * HZ /*10 seconds */,		\
+		100);		\
+	if (__ratelimit(&_rs))				\
+		printk(KERN_WARNING, format , ## arg);\
+} while (0)
 static int do_anonymous_page(struct fault_env *fe)
 {
 	struct vm_area_struct *vma = fe->vma;
 	struct mem_cgroup *memcg;
 	struct page *page;
-	struct page *pages[max_num_of_pte];
+	struct page *pages[max_num_of_page];
 	pte_t entry;
-	pte_t entries[max_num_of_pte];
-	pte_t *ptes[max_num_of_pte];
-	int num_of_pte = 1;
+	pte_t entries[max_num_of_page];
+	pte_t *ptes[max_num_of_page];
+	int num_of_page = 1;
 	unsigned long address;
 	int is_read = 0;
 	int ret;
 	int i;
+	int unlock_pte = -1;
+	static int read = 0;
+	static int write = 0;
 
-	printk_once(KERN_EMERG "cont_page_test<%d>\n", cont_page_test);
+//	printk_vm_limited("cont_page_test<%d>\n", cont_page_test);
 
 	/* File mapping without ->vm_ops ? */
 	if (vma->vm_flags & VM_SHARED)
@@ -2775,7 +2789,7 @@ static int do_anonymous_page(struct fault_env *fe)
 
 	/* Check if we need to add a guard page to the stack */
 	//TODO: return 1 to indicate we could allocate 16 pages.
-	ret = check_stack_guard_page(vma, fe->address, max_num_of_pte);
+	ret = check_stack_guard_page(vma, fe->address, max_num_of_page);
 	printk_once(KERN_EMERG "check_stack_guard_page return value: <%d>\n",
 		    ret);
 	if (ret < 0)
@@ -2790,11 +2804,16 @@ static int do_anonymous_page(struct fault_env *fe)
 	}
 
 	if (ret > 0							    \
-		&& (fe->address + max_num_of_pte * PAGE_SIZE < vma->vm_end) \
+		&& (fe->address + max_num_of_page * PAGE_SIZE < vma->vm_end) \
 		&& in_pte(fe->address, 16)				    \
-		&& ALIGN(fe->address, PAGE_SIZE * max_num_of_pte) ) {
-		num_of_pte = 16;
+		&& ALIGN(fe->address, PAGE_SIZE * max_num_of_page) ) {
+		num_of_page = 16;
+		if (cont_page_debug)
+			pr_warn_ratelimited("num_of_page is %d\n", num_of_page);
 	}
+	if (cont_page_debug)
+		pr_warn_ratelimited("addr<0x%lx>, vma <0x%lx> to <0x%lx>\n",
+				    fe->address, vma->vm_start, vma->vm_end);
 	/*
 	 * FIXME: it is useless because it is a pointer. The later code will
 	 * change it.
@@ -2822,6 +2841,7 @@ static int do_anonymous_page(struct fault_env *fe)
 	if (!(fe->flags & FAULT_FLAG_WRITE) &&
 			!mm_forbids_zeropage(vma->vm_mm)) {
 		is_read = 1;
+		read++;
 		if (cont_page_test == 0) {
 			entry = pte_mkspecial(pfn_pte(my_zero_pfn(fe->address),
 						      vma->vm_page_prot));
@@ -2833,12 +2853,16 @@ static int do_anonymous_page(struct fault_env *fe)
 			address = fe->address;
 			fe->ptl = pte_lockptr(vma->vm_mm, fe->pmd);
 			spin_lock(fe->ptl);
-			for (i = 0; i < num_of_pte; i++) {
+			for (i = 0; i < num_of_page; i++) {
 				entries[i] = pte_mkspecial(pfn_pte(my_zero_pfn(address),
 								 vma->vm_page_prot));
 				ptes[i] = pte_offset_map(fe->pmd, address);
-				if (!pte_none(*ptes[i]))
+				pr_warn_ratelimited("entries: 0x%lx; ptes: 0x%lx.\n",
+						    entries[i], ptes[i]);
+				if (!pte_none(*ptes[i])) {
+					unlock_pte = i;
 					goto unlock;
+				}
 
 				address += PAGE_SIZE;
 			}
@@ -2857,7 +2881,10 @@ static int do_anonymous_page(struct fault_env *fe)
 			}
 		}
 		goto setpte;
+	} else {
+		write++;
 	}
+	pr_warn_ratelimited("read<%d>, write<%d>\n", read, write);
 
 	/* Allocate our own private page. */
 	//TODO: do I need to change anon_vma_prepare?
@@ -2911,7 +2938,7 @@ setpte:
 		update_mmu_cache(vma, fe->address, fe->pte);
 	} else {
 		address = fe->address;
-		for (i = 0; i < num_of_pte; i++) {
+		for (i = 0; i < num_of_page; i++) {
 			set_pte_at(vma->vm_mm, address, ptes[i], entries[i]);
 			/* No need to invalidate - it was non-present before */
 			update_mmu_cache(vma, address, ptes[i]);
@@ -2922,10 +2949,10 @@ unlock:
 	if (cont_page_test == 0 || is_read == 0) {
 		pte_unmap_unlock(fe->pte, fe->ptl);
 	} else {
+		fe->ptl = pte_lockptr(vma->vm_mm, fe->pmd);
 		spin_unlock(fe->ptl);
-		for (i = 0; i < num_of_pte; i++) {
-			pte_unmap(ptes[i]);
-		}
+		if (unlock_pte > 0 && unlock_pte < num_of_page)
+			pte_unmap(ptes[unlock_pte]);
 	}
 	return 0;
 release:
