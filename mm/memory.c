@@ -2860,10 +2860,17 @@ static int do_anonymous_page(struct fault_env *fe)
 				pr_warn_ratelimited("entries: 0x%lx; ptes: 0x%lx.\n",
 						    entries[i], ptes[i]);
 				if (!pte_none(*ptes[i])) {
-					unlock_pte = i;
-					goto unlock;
-				}
+					num_of_pte = 1;
+					if (i == 1) {
+						pr_warn_ratelimited("current address of pte already alloc, unlock and exit\n");
+						goto unlock;
+					} else {
+						pr_warn_ratelimited("No enough pte(%d) of <%d>, fall back to one pte\n", i, num_of_pte);
+						num_of_pte = 1;
+						goto setpte;
 
+					}
+				}
 				address += PAGE_SIZE;
 			}
 		}
