@@ -2892,38 +2892,6 @@ static int do_anonymous_page(struct fault_env *fe)
 		page = alloc_zeroed_user_highpage_movable(vma, fe->address);
 		if (!page)
 			goto oom;
-
-		if (mem_cgroup_try_charge(page, vma->vm_mm, GFP_KERNEL, &memcg, false))
-			goto oom_free_page;
-
-		/*
-		 * The memory barrier inside __SetPageUptodate makes sure that
-		 * preceeding stores to the page contents become visible before
-		 * the set_pte_at() write.
-		 */
-		__SetPageUptodate(page);
-
-		entry = mk_pte(page, vma->vm_page_prot);
-		if (vma->vm_flags & VM_WRITE)
-			entry = pte_mkwrite(pte_mkdirty(entry));
-
-		fe->pte = pte_offset_map_lock(vma->vm_mm, fe->pmd, fe->address,
-				&fe->ptl);
-		if (!pte_none(*fe->pte))
-			goto release;
-
-		/* Deliver the page fault to userland, check inside PT lock */
-		if (userfaultfd_missing(vma)) {
-			pte_unmap_unlock(fe->pte, fe->ptl);
-			mem_cgroup_cancel_charge(page, memcg, false);
-			put_page(page);
-			return handle_userfault(fe, VM_UFFD_MISSING);
-		}
-
-		inc_mm_counter_fast(vma->vm_mm, MM_ANONPAGES);
-		page_add_new_anon_rmap(page, vma, fe->address, false);
-		mem_cgroup_commit_charge(page, memcg, false, false);
-		lru_cache_add_active_or_unevictable(page, vma);
 	} else {
 		pages = alloc_zeroed_user_highpages_movable(vma, fe->address,
 							    order);
@@ -2939,25 +2907,35 @@ static int do_anonymous_page(struct fault_env *fe)
 			if(!pages)
 				goto oom;
 		}
+	}
+	if (mem_cgroup_try_charge(page, vma->vm_mm, GFP_KERNEL, &memcg, false))
+		goto oom_free_page;
 
-		if (mem_cgroup_try_charge(pages, vma->vm_mm, GFP_KERNEL, &memcg,
-					  false))
-			goto oom_free_page;
-
-		/*
-		 * The memory barrier inside __SetPageUptodate makes sure that
-		 * preceeding stores to the page contents become visible before
-		 * the set_pte_at() write.
-		 */
+	/*
+	 * The memory barrier inside __SetPageUptodate makes sure that
+	 * preceeding stores to the page contents become visible before
+	 * the set_pte_at() write.
+	 */
+	if (cont_page_test == 0) {
+		__SetPageUptodate(page);
+		entry = mk_pte(page, vma->vm_page_prot);
+		if (vma->vm_flags & VM_WRITE)
+			entry = pte_mkwrite(pte_mkdirty(entry));
+	} else {
 		for (i = 0; i < num_of_page; i++) {
 			__SetPageUptodate(pages + i);
 
 			entries[i] = mk_pte(pages + i, vma->vm_page_prot);
 			if (vma->vm_flags & VM_WRITE)
 				entries[i] = pte_mkwrite(pte_mkdirty(entries[i]));
-
 		}
-
+	}
+	if (cont_page_test == 0) {
+		fe->pte = pte_offset_map_lock(vma->vm_mm, fe->pmd, fe->address,
+				&fe->ptl);
+		if (!pte_none(*fe->pte))
+			goto release;
+	} else {
 		address = fe->address;
 		fe->ptl = pte_lockptr(vma->vm_mm, fe->pmd);
 		for (i = 0; i < num_of_page; i++) {
@@ -2982,19 +2960,22 @@ static int do_anonymous_page(struct fault_env *fe)
 			address += PAGE_SIZE;
 		}
 		spin_lock(fe->ptl);
+	}
 
-		/* Deliver the page fault to userland, check inside PT lock */
-		if (userfaultfd_missing(vma)) {
-			pte_unmap_unlock(fe->pte, fe->ptl);
-			mem_cgroup_cancel_charge(page, memcg, false);
-			put_page(page);
-			return handle_userfault(fe, VM_UFFD_MISSING);
-		}
+	/* Deliver the page fault to userland, check inside PT lock */
+	if (userfaultfd_missing(vma)) {
+		pte_unmap_unlock(fe->pte, fe->ptl);
+		mem_cgroup_cancel_charge(page, memcg, false);
+		put_page(page);
+		return handle_userfault(fe, VM_UFFD_MISSING);
+	}
 
-		/*
-		 * TODO: should I add num_of_page of times?
-		 */
-		inc_mm_counter_fast(vma->vm_mm, MM_ANONPAGES);
+	inc_mm_counter_fast(vma->vm_mm, MM_ANONPAGES);
+	if (cont_page_test == 0) {
+		page_add_new_anon_rmap(page, vma, fe->address, false);
+		mem_cgroup_commit_charge(page, memcg, false, false);
+		lru_cache_add_active_or_unevictable(page, vma);
+	} else {
 		address = fe->address;
 		for (i = 0; i < num_of_page; i++) {
 			/*
@@ -3048,13 +3029,12 @@ unlock:
 
 	return 0;
 release:
+	mem_cgroup_cancel_charge(page, memcg, false);
 	if (cont_page_test == 0) {
-		mem_cgroup_cancel_charge(page, memcg, false);
 		put_page(page);
 	} else {
 		pages = page;
 		for (i = 0; i < num_of_page; i++) {
-			mem_cgroup_cancel_charge(pages + i, memcg, false);
 			put_page(pages + i);
 		}
 	}
