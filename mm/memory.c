@@ -3016,10 +3016,10 @@ unlock:
 			pte_unmap(ptes[i]);
 	}
 	if (cont_page_test != 0 && cont_page_debug) {
-		pr_warn_ratelimited("%s %s successful with %d pte(s): addr<0x%lx>, vma <0x%lx> to <0x%lx>\n",
+		pr_warn_ratelimited("%s %s successful with %d pte(s): pmd<0x%lx>, addr<0x%lx>, vma <0x%lx> to <0x%lx>\n",
 				    __FUNCTION__, is_read ? "read" : "write",
-				    num_of_page, fe->address, vma->vm_start,
-				    vma->vm_end);
+				    num_of_page, pmd_val(*fe->pmd), fe->address,
+				    vma->vm_start, vma->vm_end);
 		for (i = 0; i < num_of_page; i++) {
 			pr_warn_ratelimited("%d entry<0x%llx>, pte<0x%llx>, page<0x%p>\n",
 					    i, pte_val(entries[i]),
@@ -3033,7 +3033,6 @@ release:
 	if (cont_page_test == 0) {
 		put_page(page);
 	} else {
-		pages = page;
 		for (i = 0; i < num_of_page; i++) {
 			put_page(pages + i);
 		}
