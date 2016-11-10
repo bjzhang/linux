@@ -73,6 +73,8 @@
 #include <asm/tlbflush.h>
 #include <asm/pgtable.h>
 
+#include <linux/moduleparam.h>
+
 #include "internal.h"
 
 #ifdef LAST_CPUPID_NOT_IN_PAGE_FLAGS
@@ -134,6 +136,21 @@ static int __init init_zero_pfn(void)
 }
 core_initcall(init_zero_pfn);
 
+/*
+ * 0: disable. the original code
+ * 1: disable cont. the upstream plan
+ * 10: enable cont when possible. the upstream plan
+ */
+/*
+ * static int cont_page_test = 1;
+ * module_param(cont_page_test, int, 0);
+ */
+int cont_page_test __read_mostly = 0;
+enum {
+	CONT_PAGE_WARN,
+	CONT_PAGE_DEBUG
+};
+int cont_page_debug __read_mostly = 0;
 
 #if defined(SPLIT_RSS_COUNTING)
 
@@ -2699,7 +2716,9 @@ out_release:
  * except we must first make sure that 'address{-|+}PAGE_SIZE'
  * doesn't hit another vma.
  */
-static inline int check_stack_guard_page(struct vm_area_struct *vma, unsigned long address)
+static inline int check_stack_guard_page(struct vm_area_struct *vma,
+					 unsigned long address,
+					 unsigned long num_of_cont_page)
 {
 	address &= PAGE_MASK;
 	if ((vma->vm_flags & VM_GROWSDOWN) && address == vma->vm_start) {
@@ -2733,20 +2752,70 @@ static inline int check_stack_guard_page(struct vm_area_struct *vma, unsigned lo
  * but allow concurrent faults), and pte mapped but not yet locked.
  * We return with mmap_sem still held, but pte unmapped and unlocked.
  */
+/*
+ * We could change fe->pte safely because we exit handle_pte_fault
+ * after exit do_anonymous_page. And fe is allocated in
+ * __handle_mm_fault.
+ * There is no need to set the flat of cont pte because we only do the
+ * cont when 16 contiguous pages align with 16 * PAGE_SIZE of start address.
+ */
+#define num_of_cont_page (16)
+/*
+ * FIXME: fix the memcg, userfaultfd and pte_unmap(maybe) later
+ * What we could do for check_stack_guard_page? We could ignore it safely
+ * when stack is grow down, we coud propbably not allocate the more than one
+ * page. But we could also allocate 16 page by growing down the stack 16 pages.
+ * Given that the stack may grow up quickly. It maybe worth to do it.
+ */
 static int do_anonymous_page(struct fault_env *fe)
 {
 	struct vm_area_struct *vma = fe->vma;
 	struct mem_cgroup *memcg;
 	struct page *page;
+	struct page *pages;
 	pte_t entry;
+	pte_t entries[num_of_cont_page];
+	pte_t *ptes[num_of_cont_page];
+	int num_of_page = 1;
+	int num_of_page_allocate = 1;
+	unsigned long address;
+	int is_no_op = 0;
+	int order = 0;
+	int ret;
+	int i;
+	int is_read = 0;
 
 	/* File mapping without ->vm_ops ? */
 	if (vma->vm_flags & VM_SHARED)
 		return VM_FAULT_SIGBUS;
 
 	/* Check if we need to add a guard page to the stack */
-	if (check_stack_guard_page(vma, fe->address) < 0)
+	//TODO: return 1 to indicate we could allocate 16 pages.
+	ret = check_stack_guard_page(vma, fe->address, num_of_cont_page);
+	printk_once(KERN_ERR "check_stack_guard_page return value: <%d>\n",
+		    ret);
+	if (ret < 0)
 		return VM_FAULT_SIGSEGV;
+
+	/*
+	 * TODO: does check_stack_guard_page affect by this?
+	 * I am not sure at the moment.
+	 */
+	if (cont_page_test == 10) {
+		ret = 1;
+	}
+
+	if (ret > 0							    \
+		&& (fe->address + num_of_cont_page * PAGE_SIZE < vma->vm_end) \
+		&& in_pte(fe->address, 16)				    \
+		&& ALIGN(fe->address, PAGE_SIZE * num_of_cont_page) ) {
+		num_of_page = 16;
+		num_of_page_allocate = num_of_page;
+		order =4;
+		if (cont_page_debug >= CONT_PAGE_DEBUG)
+			pr_debug("fe<0x%p>->addres<0x%lx> will try to allocate %d pages\n",
+				 fe, fe->address, num_of_page);
+	}
 
 	/*
 	 * Use pte_alloc() instead of pte_alloc_map().  We can't run
@@ -2768,26 +2837,83 @@ static int do_anonymous_page(struct fault_env *fe)
 	/* Use the zero-page for reads */
 	if (!(fe->flags & FAULT_FLAG_WRITE) &&
 			!mm_forbids_zeropage(vma->vm_mm)) {
-		entry = pte_mkspecial(pfn_pte(my_zero_pfn(fe->address),
-						vma->vm_page_prot));
-		fe->pte = pte_offset_map_lock(vma->vm_mm, fe->pmd, fe->address,
-				&fe->ptl);
-		if (!pte_none(*fe->pte))
-			goto unlock;
+		is_read = 1;
+		address = fe->address;
+		fe->ptl = pte_lockptr(vma->vm_mm, fe->pmd);
+		spin_lock(fe->ptl);
+		for (i = 0; i < num_of_page; i++) {
+			entries[i] = pte_mkspecial(pfn_pte(my_zero_pfn(address),
+							   vma->vm_page_prot));
+			ptes[i] = pte_offset_map(fe->pmd, address);
+			if (!pte_none(*ptes[i])) {
+				if (i == 0) {
+					order = 0;
+					num_of_page = 1;
+					is_no_op = 1;
+					if (cont_page_debug >=
+					    CONT_PAGE_WARN)
+						pr_warn("current address of pte already alloc, unlock and exit\n");
+					goto unlock;
+				} else {
+					if (cont_page_debug >=
+					    CONT_PAGE_WARN)
+						pr_warn("No enough pte(%d) of <%d>, fall back to one pte\n", i, num_of_page);
+					order = 0;
+					num_of_page = 1;
+					goto setpte;
+				}
+			}
+			address += PAGE_SIZE;
+		}
 		/* Deliver the page fault to userland, check inside PT lock */
+		/*
+		 * FIXME: CONFIG_USERFAULTFD is disabled, fix the userfaultfd later.
+		 */
 		if (userfaultfd_missing(vma)) {
-			pte_unmap_unlock(fe->pte, fe->ptl);
-			return handle_userfault(fe, VM_UFFD_MISSING);
+			if (cont_page_test == 0) { pte_unmap_unlock(fe->pte, fe->ptl);
+				return handle_userfault(fe, VM_UFFD_MISSING);
+			} else {
+				pte_unmap_unlock(ptes[i], fe->ptl);
+				return handle_userfault(fe, VM_UFFD_MISSING);
+			}
 		}
 		goto setpte;
 	}
 
 	/* Allocate our own private page. */
+	//TODO: do I need to change anon_vma_prepare?
 	if (unlikely(anon_vma_prepare(vma)))
 		goto oom;
-	page = alloc_zeroed_user_highpage_movable(vma, fe->address);
-	if (!page)
+
+	pages = alloc_zeroed_user_highpages_movable(vma, fe->address,
+						    order);
+	if (!pages && order == 0) {
+		if (cont_page_debug >= CONT_PAGE_WARN)
+			pr_warn("allocate order<%d> fail, goto oom\n",
+				order);
+
 		goto oom;
+	}
+
+	if (!pages) {
+		if (cont_page_debug >= CONT_PAGE_WARN)
+			pr_warn("allocate order<%d> fail, try one page\n",
+				order);
+
+		order = 0;
+		num_of_page = 1;
+		num_of_page_allocate = num_of_page;
+		pages = alloc_zeroed_user_highpages_movable(vma,
+							    fe->address,
+							    order);
+		if(!pages) {
+			if (cont_page_debug >= CONT_PAGE_WARN)
+				pr_warn("allocate order<%d> fail, goto oom\n",
+					order);
+			goto oom;
+		}
+	}
+	split_page(pages, order);
 
 	if (mem_cgroup_try_charge(page, vma->vm_mm, GFP_KERNEL, &memcg, false))
 		goto oom_free_page;
@@ -2797,16 +2923,40 @@ static int do_anonymous_page(struct fault_env *fe)
 	 * preceeding stores to the page contents become visible before
 	 * the set_pte_at() write.
 	 */
-	__SetPageUptodate(page);
+	for (i = 0; i < num_of_page; i++) {
+		__SetPageUptodate(pages + i);
 
-	entry = mk_pte(page, vma->vm_page_prot);
-	if (vma->vm_flags & VM_WRITE)
-		entry = pte_mkwrite(pte_mkdirty(entry));
+		entries[i] = mk_pte(pages + i, vma->vm_page_prot);
+		if (vma->vm_flags & VM_WRITE)
+			entries[i] = pte_mkwrite(pte_mkdirty(entries[i]));
+	}
 
-	fe->pte = pte_offset_map_lock(vma->vm_mm, fe->pmd, fe->address,
-			&fe->ptl);
-	if (!pte_none(*fe->pte))
-		goto release;
+	address = fe->address;
+	fe->ptl = pte_lockptr(vma->vm_mm, fe->pmd);
+	spin_lock(fe->ptl);
+	for (i = 0; i < num_of_page; i++) {
+		ptes[i] = pte_offset_map(fe->pmd, address);
+		if (!pte_none(*(ptes[i]))) {
+			if (i == 0) {
+				if (cont_page_debug >= CONT_PAGE_WARN)
+					pr_warn("Current address of pte already alloc, release, unlock and exit\n");
+
+				num_of_page = 1;
+				is_no_op = 1;
+				goto release;
+			} else {
+				if (cont_page_debug >= CONT_PAGE_WARN)
+					pr_warn("No enough pte(%d) of <%d>, fall back to %d pte(s)\n", i, num_of_page, 1);
+
+				for (i = 1; i < num_of_page; i++)
+					put_page(pages + i);
+
+				num_of_page = 1;
+				break;
+			}
+		}
+		address += PAGE_SIZE;
+	}
 
 	/* Deliver the page fault to userland, check inside PT lock */
 	if (userfaultfd_missing(vma)) {
@@ -2816,21 +2966,43 @@ static int do_anonymous_page(struct fault_env *fe)
 		return handle_userfault(fe, VM_UFFD_MISSING);
 	}
 
-	inc_mm_counter_fast(vma->vm_mm, MM_ANONPAGES);
-	page_add_new_anon_rmap(page, vma, fe->address, false);
-	mem_cgroup_commit_charge(page, memcg, false, false);
-	lru_cache_add_active_or_unevictable(page, vma);
+	address = fe->address;
+	for (i = 0; i < num_of_page; i++) {
+		inc_mm_counter_fast(vma->vm_mm, MM_ANONPAGES);
+		/*
+		 * TODO: Should I use the compound? It seems that the
+		 * compound is the huge page or transhuge. It is the
+		 * page I allocate. TODO check linux101.
+		 */
+		page_add_new_anon_rmap(pages + i, vma, address, false);
+		mem_cgroup_commit_charge(pages + i, memcg, false,
+					 false);
+		lru_cache_add_active_or_unevictable(pages + i, vma);
+		address += PAGE_SIZE;
+	}
 setpte:
-	set_pte_at(vma->vm_mm, fe->address, fe->pte, entry);
+	address = fe->address;
+	for (i = 0; i < num_of_page; i++) {
+//		if (num_of_page == num_of_cont_page)
+//		entries[i] = pte_mkcont(entries[i]);
 
-	/* No need to invalidate - it was non-present before */
-	update_mmu_cache(vma, fe->address, fe->pte);
+		set_pte_at(vma->vm_mm, address, ptes[i], entries[i]);
+		/* No need to invalidate - it was non-present before */
+		update_mmu_cache(vma, address, ptes[i]);
+		address += PAGE_SIZE;
+	}
 unlock:
-	pte_unmap_unlock(fe->pte, fe->ptl);
+	fe->ptl = pte_lockptr(vma->vm_mm, fe->pmd);
+	for (i = 0; i < num_of_page; i++ )
+		pte_unmap(ptes[i]);
+
+	spin_unlock(fe->ptl);
+
 	return 0;
 release:
-	mem_cgroup_cancel_charge(page, memcg, false);
-	put_page(page);
+	for (i = 0; i < num_of_page_allocate; i++) {
+		put_page(pages + i);
+	}
 	goto unlock;
 oom_free_page:
 	put_page(page);

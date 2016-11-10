@@ -183,6 +183,23 @@ alloc_zeroed_user_highpage_movable(struct vm_area_struct *vma,
 	return __alloc_zeroed_user_highpage(__GFP_MOVABLE, vma, vaddr);
 }
 
+/*
+ * FIXME: it is might be arch dependent code.
+ * check __HAVE_ARCH_ALLOC_ZEROED_USER_HIGHPAGE
+ */
+static inline struct page *
+alloc_zeroed_user_highpages_movable(struct vm_area_struct *vma,
+				    unsigned long vaddr, int order)
+{
+	struct page *page = alloc_pages_vma(GFP_HIGHUSER | __GFP_MOVABLE, order,
+					    vma, vaddr, numa_node_id(), false);
+
+	if (page)
+		clear_user_highpage(page, vaddr);
+
+	return page;
+}
+
 static inline void clear_highpage(struct page *page)
 {
 	void *kaddr = kmap_atomic(page);

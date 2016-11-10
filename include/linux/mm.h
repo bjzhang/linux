@@ -63,6 +63,8 @@ extern const int mmap_rnd_compat_bits_min;
 extern const int mmap_rnd_compat_bits_max;
 extern int mmap_rnd_compat_bits __read_mostly;
 #endif
+extern int cont_page_test __read_mostly;
+extern int cont_page_debug __read_mostly;
 
 #include <asm/page.h>
 #include <asm/pgtable.h>

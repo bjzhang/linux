@@ -398,6 +398,15 @@ static inline phys_addr_t pmd_page_paddr(pmd_t pmd)
 
 /* Find an entry in the third-level page table. */
 #define pte_index(addr)		(((addr) >> PAGE_SHIFT) & (PTRS_PER_PTE - 1))
+static inline int in_pte(unsigned long addr, int num)
+{
+	unsigned long addr_in_page = addr >> PAGE_SHIFT;
+	if ((addr_in_page & (PTRS_PER_PTE - 1))
+	    < ((addr_in_page + num) & (PTRS_PER_PTE - 1)))
+		return 1;
+	else
+		return 0;
+}
 
 #define pte_offset_phys(dir,addr)	(pmd_page_paddr(*(dir)) + pte_index(addr) * sizeof(pte_t))
 #define pte_offset_kernel(dir,addr)	((pte_t *)__va(pte_offset_phys((dir), (addr))))
