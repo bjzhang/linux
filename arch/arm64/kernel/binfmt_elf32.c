@@ -8,7 +8,9 @@
 #define compat_start_thread		compat_start_thread
 #define COMPAT_SET_PERSONALITY(ex)		\
 do {						\
+	clear_bit(TIF_32BIT_AARCH64, &current->mm->context.flags);	\
 	clear_thread_flag(TIF_32BIT_AARCH64);	\
+	set_bit(TIF_32BIT, &current->mm->context.flags);	\
 	set_thread_flag(TIF_32BIT);		\
 } while (0)
 

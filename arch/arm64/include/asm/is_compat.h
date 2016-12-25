@@ -17,6 +17,7 @@
 #ifndef __ASSEMBLY__
 
 #include <linux/thread_bits.h>
+#include <linux/thread_info.h>
 
 #ifdef CONFIG_AARCH32_EL0
 

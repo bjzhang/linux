@@ -58,7 +58,9 @@ static void cputime_to_compat_timeval(const cputime_t cputime,
 #undef SET_PERSONALITY
 #define SET_PERSONALITY(ex)						\
 do {									\
+	set_bit(TIF_32BIT_AARCH64, &current->mm->context.flags);	\
 	set_thread_flag(TIF_32BIT_AARCH64);				\
+	clear_bit(TIF_32BIT, &current->mm->context.flags);	\
 	clear_thread_flag(TIF_32BIT);					\
 } while (0)
 
