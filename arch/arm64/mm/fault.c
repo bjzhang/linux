@@ -246,6 +246,8 @@ int ptep_set_access_flags(struct vm_area_struct *vma,
 		pteval = cmpxchg_relaxed(&pte_val(*ptep), old_pteval, pteval);
 	} while (pteval != old_pteval);
 
+	printk("pte_addr: 0x%p, 0x%llx, pte_val(entry): 0x%llx\n", &entry,
+		(unsigned long long)&entry, pte_val(entry));
 	flush_tlb_fix_spurious_fault(vma, address);
 	return 1;
 }

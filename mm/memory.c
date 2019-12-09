@@ -3767,6 +3767,8 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 {
 	pte_t entry;
 
+	printk("pmd_addr: 0x%p, 0x%llx, pmd_val(entry): 0x%llx\n", vmf->pmd,
+		(unsigned long long)vmf->pmd, pmd_val(*vmf->pmd));
 	if (unlikely(pmd_none(*vmf->pmd))) {
 		/*
 		 * Leave __pte_alloc() until later: because vm_ops->fault may
