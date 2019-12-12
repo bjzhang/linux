@@ -156,6 +156,11 @@ static const struct prot_bits pte_bits[] = {
 		.mask	= PTE_ATTRINDX_MASK,
 		.val	= PTE_ATTRINDX(MT_NORMAL),
 		.set	= "MEM/NORMAL",
+	}, {
+		.mask	= PTE_DBM,
+		.val	= PTE_DBM,
+		.set	= "D",
+		.clear	= " ",
 	}
 };
 
@@ -292,6 +297,9 @@ static void walk_pte(struct pg_state *st, pmd_t *pmdp, unsigned long start,
 	unsigned long addr = start;
 	pte_t *ptep = pte_offset_kernel(pmdp, start);
 
+	if (PAGE_OFFSET == addr) {
+		pr_info("addr 0x%lx pte 0x%llx at %px\n", addr, pte_val(*ptep), ptep);
+	}
 	do {
 		note_page(st, addr, 4, READ_ONCE(pte_val(*ptep)));
 	} while (ptep++, addr += PAGE_SIZE, addr != end);
@@ -307,6 +315,9 @@ static void walk_pmd(struct pg_state *st, pud_t *pudp, unsigned long start,
 		pmd_t pmd = READ_ONCE(*pmdp);
 		next = pmd_addr_end(addr, end);
 
+		if (PAGE_OFFSET == addr) {
+			pr_info("addr 0x%lx pmd 0x%llx at %px\n", addr, pmd_val(pmd), pmdp);
+		}
 		if (pmd_none(pmd) || pmd_sect(pmd)) {
 			note_page(st, addr, 3, pmd_val(pmd));
 		} else {
@@ -326,6 +337,9 @@ static void walk_pud(struct pg_state *st, pgd_t *pgdp, unsigned long start,
 		pud_t pud = READ_ONCE(*pudp);
 		next = pud_addr_end(addr, end);
 
+		if (PAGE_OFFSET == addr) {
+			pr_info("addr 0x%lx pud 0x%llx at %px\n", addr, pud_val(pud), pudp);
+		}
 		if (pud_none(pud) || pud_sect(pud)) {
 			note_page(st, addr, 2, pud_val(pud));
 		} else {
@@ -346,6 +360,9 @@ static void walk_pgd(struct pg_state *st, struct mm_struct *mm,
 		pgd_t pgd = READ_ONCE(*pgdp);
 		next = pgd_addr_end(addr, end);
 
+		if (PAGE_OFFSET == addr) {
+			pr_info("addr 0x%lx pgd 0x%llx at %px\n", addr, pgd_val(pgd), pgdp);
+		}
 		if (pgd_none(pgd)) {
 			note_page(st, addr, 1, pgd_val(pgd));
 		} else {
