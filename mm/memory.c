@@ -3804,6 +3804,7 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 	}
 
 	if (!vmf->pte) {
+		pr_info("read fault 0x%lx\n", vmf->address);
 		if (vma_is_anonymous(vmf->vma))
 			return do_anonymous_page(vmf);
 		else
@@ -3822,10 +3823,13 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 	if (unlikely(!pte_same(*vmf->pte, entry)))
 		goto unlock;
 	if (vmf->flags & FAULT_FLAG_WRITE) {
-		if (!pte_write(entry))
+		if (!pte_write(entry)) {
+			pr_info("cow fault: 0x%lx\n", vmf->address);
 			return do_wp_page(vmf);
+		}
 		entry = pte_mkdirty(entry);
 	}
+	pr_info("fault: 0x%lx\n", vmf->address);
 	entry = pte_mkyoung(entry);
 	if (ptep_set_access_flags(vmf->vma, vmf->address, vmf->pte, entry,
 				vmf->flags & FAULT_FLAG_WRITE)) {

@@ -724,6 +724,46 @@ static const struct fault_info fault_info[] = {
 	{ do_bad,		SIGKILL, SI_KERNEL,	"unknown 63"			},
 };
 
+asmlinkage void __exception do_mem_abort_ymc(unsigned long addr, unsigned int esr,
+					 struct pt_regs *regs)
+{
+//	const struct fault_info *inf = esr_to_fault_info(esr);
+//	struct task_struct *tsk;
+//	struct mm_struct *mm;
+//	pmd_t *pmdp;
+//	vm_fault_t fault;
+//	unsigned long haddr = vmf->address & HPAGE_PMD_MASK;
+//	struct vm_area_struct *vma;
+//#error vma to vmf!
+//
+//	tsk = current;
+//	mm  = tsk->mm;
+//
+//	vma = find_vma(mm, addr);
+//	fault = VM_FAULT_BADMAP;
+//	if (unlikely(!vma))
+//		goto out;
+//	if (unlikely(vma->vm_start > addr))
+//		goto out;
+//
+//	pr_alert("YMC: fault at 0x%016lx\n", addr);
+//	pmdp = mm_alloc_pmd(mm, addr);
+//	if (unlikely(!pmdp)) {
+//		pri_err("pmdp empty for address[0x%lx]\n", addr);
+//		err = -ENOMEM;
+//		goto out;
+//	}
+//	pr_info("pmdp<0x%px> at pmd<0x%llx>\n", pmdp, pmd);
+//	haddr = vmf->address & HPAGE_PMD_MASK;
+//	pr_info("haddr<0x%lx>\n", haddr);
+//	page = alloc_hugepage_vma(gfp, vmf, haddr, HPAGE_PMD_ORDER);
+//	pr_info("page<0x%lx>\n", page);
+//	return __do_huge_pmd_anonymous_page(vmf, page, GFP_HIGHUSER);
+//out:
+//	arm64_notify_die(inf->name, regs,
+//			 inf->sig, inf->code, (void __user *)addr, esr);
+}
+
 asmlinkage void __exception do_mem_abort(unsigned long addr, unsigned int esr,
 					 struct pt_regs *regs)
 {

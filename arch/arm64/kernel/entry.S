@@ -705,7 +705,7 @@ el0_sync_compat:
 	cmp	x24, #ESR_ELx_EC_SVC32		// SVC in 32-bit state
 	b.eq	el0_svc_compat
 	cmp	x24, #ESR_ELx_EC_DABT_LOW	// data abort in EL0
-	b.eq	el0_da
+	b.eq	el0_da_ymc
 	cmp	x24, #ESR_ELx_EC_IABT_LOW	// instruction abort in EL0
 	b.eq	el0_ia
 	cmp	x24, #ESR_ELx_EC_FP_ASIMD	// FP/ASIMD access
@@ -766,6 +766,19 @@ el0_da:
 	mov	x1, x25
 	mov	x2, sp
 	bl	do_mem_abort
+	b	ret_to_user
+
+el0_da_ymc:
+	/*
+	 * Data abort handling
+	 */
+	mrs	x26, far_el1
+	enable_daif
+	ct_user_exit
+	clear_address_tag x0, x26
+	mov	x1, x25
+	mov	x2, sp
+	bl	do_mem_abort_ymc
 	b	ret_to_user
 el0_ia:
 	/*
