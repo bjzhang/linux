@@ -727,41 +727,77 @@ static const struct fault_info fault_info[] = {
 asmlinkage void __exception do_mem_abort_ymc(unsigned long addr, unsigned int esr,
 					 struct pt_regs *regs)
 {
-//	const struct fault_info *inf = esr_to_fault_info(esr);
-//	struct task_struct *tsk;
-//	struct mm_struct *mm;
-//	pmd_t *pmdp;
-//	vm_fault_t fault;
-//	unsigned long haddr = vmf->address & HPAGE_PMD_MASK;
-//	struct vm_area_struct *vma;
-//#error vma to vmf!
-//
-//	tsk = current;
-//	mm  = tsk->mm;
-//
-//	vma = find_vma(mm, addr);
-//	fault = VM_FAULT_BADMAP;
-//	if (unlikely(!vma))
-//		goto out;
-//	if (unlikely(vma->vm_start > addr))
-//		goto out;
-//
-//	pr_alert("YMC: fault at 0x%016lx\n", addr);
-//	pmdp = mm_alloc_pmd(mm, addr);
-//	if (unlikely(!pmdp)) {
-//		pri_err("pmdp empty for address[0x%lx]\n", addr);
-//		err = -ENOMEM;
-//		goto out;
-//	}
-//	pr_info("pmdp<0x%px> at pmd<0x%llx>\n", pmdp, pmd);
+	const struct fault_info *inf = esr_to_fault_info(esr);
+	struct task_struct *tsk;
+	struct mm_struct *mm;
+	pgd_t *pgd;
+	pud_t *pud;
+	pmd_t *pmd;
+	pte_t *pte;
+	pte_t entry;
+	vm_fault_t fault;
+	//	unsigned long haddr = vmf->address & HPAGE_PMD_MASK;
+	struct vm_area_struct *vma;
+
+	tsk = current;
+	mm  = tsk->mm;
+
+	if ((esr & ESR_ELx_WNR) && !(esr & ESR_ELx_CM)) {
+		pr_info("vm_flags = VM_WRITE\n");
+		vm_flags = VM_WRITE;
+	}
+	vma = find_vma(mm, addr);
+	fault = VM_FAULT_BADMAP;
+	if (unlikely(!vma))
+		goto out;
+	if (unlikely(vma->vm_start > addr))
+		goto out;
+
+	pr_alert("YMC: fault in %px\n", do_mem_abort_ymc);
+	pr_alert("YMC: fault at 0x%016lx\n", addr);
+	pgd = pgd_offset(mm, addr);
+	//	if (unlikely(!pgd)) {
+	//		pr_err("pgd empty for address[0x%lx]\n", addr);
+	//		err = -ENOMEM;
+	//		goto out;
+	//	}
+	pr_info("pgd<0x%llx> at pgd<0x%px>\n", pgd_val(*pgd), pgd);
+	pud = pud_alloc(mm, pgd, addr);
+	pr_info("pud<0x%llx> at pud<0x%px>\n", pud_val(*pud), pud);
+	if (pud_none(*pud)) {
+		pr_info("Could create THP in pud level\n");
+	}
+	pmd = pmd_alloc(mm, pud, addr);
+	pr_info("pmd<0x%llx> at pmd<0x%px>\n", pmd_val(*pmd), pmd);
+	if (pmd_none(*pmd)) {
+		pr_info("Could create THP in pmd level\n");
+	}
+	pte = pte_offset_map(pmd, addr);
+	pr_info("pte<0x%llx> at pte<0x%px>\n", pte_val(*pte), pte);
+	if (pte_none(*pte))
+		pte = NULL;
+
+	if (!pte) {
+		pr_info("pte does not exist\n");
+		pte = pte_alloc_map(mm, pmd, addr);
+//		pte_alloc(mm, pmd);
+//		pte = pte_offset_map(pmd, addr);
+		pr_info("pte<0x%llx> at pte<0x%px>\n", pte_val(*pte), pte);
+		entry = pte_mkspecial(pfn_pte(my_zero_pfn(addr), vma->vm_page_prot));
+		set_pte_at(mm, addr, pte, entry);
+		update_mmu_cache(vma, addr, pte);
+	} else {
+		pr_err("handle it later\n");
+	}
 //	haddr = vmf->address & HPAGE_PMD_MASK;
 //	pr_info("haddr<0x%lx>\n", haddr);
 //	page = alloc_hugepage_vma(gfp, vmf, haddr, HPAGE_PMD_ORDER);
 //	pr_info("page<0x%lx>\n", page);
 //	return __do_huge_pmd_anonymous_page(vmf, page, GFP_HIGHUSER);
-//out:
-//	arm64_notify_die(inf->name, regs,
-//			 inf->sig, inf->code, (void __user *)addr, esr);
+	return;
+out:
+	arm64_notify_die(inf->name, regs,
+			 inf->sig, inf->code, (void __user *)addr, esr);
 }
 
 asmlinkage void __exception do_mem_abort(unsigned long addr, unsigned int esr,
