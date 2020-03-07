@@ -738,13 +738,13 @@ asmlinkage void __exception do_mem_abort_ymc(unsigned long addr, unsigned int es
 	vm_fault_t fault;
 	//	unsigned long haddr = vmf->address & HPAGE_PMD_MASK;
 	struct vm_area_struct *vma;
+	struct page *page;
 
 	tsk = current;
 	mm  = tsk->mm;
 
 	if ((esr & ESR_ELx_WNR) && !(esr & ESR_ELx_CM)) {
 		pr_info("vm_flags = VM_WRITE\n");
-		vm_flags = VM_WRITE;
 	}
 	vma = find_vma(mm, addr);
 	fault = VM_FAULT_BADMAP;
@@ -771,12 +771,13 @@ asmlinkage void __exception do_mem_abort_ymc(unsigned long addr, unsigned int es
 	pr_info("pmd<0x%llx> at pmd<0x%px>\n", pmd_val(*pmd), pmd);
 	if (pmd_none(*pmd)) {
 		pr_info("Could create THP in pmd level\n");
-	}
-	pte = pte_offset_map(pmd, addr);
-	pr_info("pte<0x%llx> at pte<0x%px>\n", pte_val(*pte), pte);
-	if (pte_none(*pte))
 		pte = NULL;
-
+	} else {
+		pte = pte_offset_map(pmd, addr);
+		pr_info("pte<0x%llx> at pte<0x%px>\n", pte_val(*pte), pte);
+		if (pte_none(*pte))
+			pte = NULL;
+	}
 	if (!pte) {
 		pr_info("pte does not exist\n");
 		pte = pte_alloc_map(mm, pmd, addr);
@@ -784,11 +785,17 @@ asmlinkage void __exception do_mem_abort_ymc(unsigned long addr, unsigned int es
 //		pte = pte_offset_map(pmd, addr);
 		pr_info("pte<0x%llx> at pte<0x%px>\n", pte_val(*pte), pte);
 		entry = pte_mkspecial(pfn_pte(my_zero_pfn(addr), vma->vm_page_prot));
-		set_pte_at(mm, addr, pte, entry);
-		update_mmu_cache(vma, addr, pte);
 	} else {
-		pr_err("handle it later\n");
+		page = alloc_zeroed_user_highpage_movable(vma, addr);
+		__SetPageUptodate(page);
+		entry = mk_pte(page, vma->vm_page_prot);
+		if (vma->vm_flags & VM_WRITE)
+			entry = pte_mkwrite(pte_mkdirty(entry));
+
+		pte = pte_offset_map(pmd, addr);
 	}
+	set_pte_at(mm, addr, pte, entry);
+	update_mmu_cache(vma, addr, pte);
 //	haddr = vmf->address & HPAGE_PMD_MASK;
 //	pr_info("haddr<0x%lx>\n", haddr);
 //	page = alloc_hugepage_vma(gfp, vmf, haddr, HPAGE_PMD_ORDER);

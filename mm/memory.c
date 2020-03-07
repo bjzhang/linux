@@ -2316,6 +2316,8 @@ static vm_fault_t wp_page_copy(struct vm_fault *vmf)
 		 * new page to be mapped directly into the secondary page table.
 		 */
 		set_pte_at_notify(mm, vmf->address, vmf->pte, entry);
+		pr_info("wp_page_copy: pte<0x%llx> at pte<0x%px>\n",
+			pte_val(*vmf->pte), vmf->pte);
 		update_mmu_cache(vma, vmf->address, vmf->pte);
 		if (old_page) {
 			/*
@@ -2989,6 +2991,7 @@ static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
 	lru_cache_add_active_or_unevictable(page, vma);
 setpte:
 	set_pte_at(vma->vm_mm, vmf->address, vmf->pte, entry);
+	pr_info("%s: pte<0x%llx> at pte<0x%px> at address<%lx>\n", __FUNCTION__, pte_val(*vmf->pte), vmf->pte, vmf->address);
 
 	/* No need to invalidate - it was non-present before */
 	update_mmu_cache(vma, vmf->address, vmf->pte);
@@ -3833,6 +3836,7 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 	entry = pte_mkyoung(entry);
 	if (ptep_set_access_flags(vmf->vma, vmf->address, vmf->pte, entry,
 				vmf->flags & FAULT_FLAG_WRITE)) {
+		pr_info("%s: pte<0x%llx> at pte<0x%px> at address<%lx>\n", __FUNCTION__, pte_val(*vmf->pte), vmf->pte, vmf->address);
 		update_mmu_cache(vmf->vma, vmf->address, vmf->pte);
 	} else {
 		/*

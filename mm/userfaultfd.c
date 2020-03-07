@@ -413,6 +413,9 @@ static __always_inline ssize_t mfill_atomic_pte(struct mm_struct *dst_mm,
 	 * only happens in the pagetable (to verify it's still none)
 	 * and not in the radix tree.
 	 */
+	pr_info("%s: dst addr %lx of vma(%px: flags %lx) (pmd %llx@%px)\n",
+		__func__, dst_addr, dst_vma, dst_vma->vm_flags,
+		pmd_val(*dst_pmd), dst_pmd);
 	if (!(dst_vma->vm_flags & VM_SHARED)) {
 		if (!zeropage)
 			err = mcopy_atomic_pte(dst_mm, dst_pmd, dst_vma,

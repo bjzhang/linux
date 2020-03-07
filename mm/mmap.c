@@ -1392,6 +1392,7 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 
 	*populate = 0;
 
+	pr_info("%s: flags: %lx\n", __func__, flags);
 	if (!len)
 		return -EINVAL;
 
@@ -1429,9 +1430,10 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 	 * that it represents a valid section of the address space.
 	 */
 	addr = get_unmapped_area(file, addr, len, pgoff, flags);
-	if (offset_in_page(addr))
+	if (offset_in_page(addr)) {
+		pr_info("%s: mmap to %lx\n", __func__, addr);
 		return addr;
-
+	}
 	if (flags & MAP_FIXED_NOREPLACE) {
 		struct vm_area_struct *vma = find_vma(mm, addr);
 
@@ -1451,6 +1453,9 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 	 */
 	vm_flags |= calc_vm_prot_bits(prot, pkey) | calc_vm_flag_bits(flags) |
 			mm->def_flags | VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC;
+
+	if (flags & 0x10000000)
+		vm_flags |= 0x10000000;
 
 	if (flags & MAP_LOCKED)
 		if (!can_do_mlock())
@@ -1557,6 +1562,7 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 			vm_flags |= VM_NORESERVE;
 	}
 
+	pr_info("%s: try to map addr %lx with mmap_region and vm_flags %lx\n", __func__, addr, vm_flags);
 	addr = mmap_region(file, addr, len, vm_flags, pgoff, uf);
 	if (!IS_ERR_VALUE(addr) &&
 	    ((vm_flags & VM_LOCKED) ||
@@ -1765,6 +1771,7 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 	vma->vm_flags = vm_flags;
 	vma->vm_page_prot = vm_get_page_prot(vm_flags);
 	vma->vm_pgoff = pgoff;
+	pr_info("%s: try to map addr %lx into vma %px\n", __func__, addr, vma);
 
 	if (file) {
 		if (vm_flags & VM_DENYWRITE) {
@@ -1804,6 +1811,7 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 		if (error)
 			goto free_vma;
 	} else {
+		pr_info("%s: try to map addr %lx into vma %px through vma_set_anonymous\n", __func__, addr, vma);
 		vma_set_anonymous(vma);
 	}
 
