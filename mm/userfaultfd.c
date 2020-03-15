@@ -433,6 +433,38 @@ static __always_inline ssize_t mfill_atomic_pte(struct mm_struct *dst_mm,
 	return err;
 }
 
+static void ymc_alloc_pmd_pte(struct mm_struct *dst_mm,
+			      unsigned long dst_addr, unsigned long src_addr)
+{
+	struct vm_area_struct *dst_vma;
+	struct page *page;
+	void *page_kaddr;
+	pgd_t *pgd;
+	void *page1, *page2;
+
+	dst_vma = find_vma(dst_mm, dst_addr);
+	if (!dst_vma)
+		goto out;
+
+	page = alloc_page_vma(GFP_HIGHUSER_MOVABLE, dst_vma, dst_addr);
+	if (!page)
+		goto out;
+
+	pr_info("%s: page@%px\n", __func__, page);
+	page_kaddr = kmap_atomic(page);
+	copy_from_user(page_kaddr, (const void __user *) src_addr, PAGE_SIZE);
+	kunmap_atomic(page_kaddr);
+
+	pgd = dst_mm->pgd;
+	pr_info("pgd: %px\n", pgd);
+	page1 = __get_free_page(GFP_KERNEL | __GFP_ZERO);
+	page2 = __get_free_page(GFP_KERNEL | __GFP_ZERO);
+	pr_info("page allocated for page table: %px, %px\n", page1, page2);
+	while(1);
+out:
+	return;
+}
+
 static __always_inline ssize_t __mcopy_atomic(struct mm_struct *dst_mm,
 					      unsigned long dst_start,
 					      unsigned long src_start,
@@ -527,6 +559,10 @@ retry:
 
 		BUG_ON(dst_addr >= dst_start + len);
 
+		if (dst_vma->vm_flags & 0x10000000) {
+			ymc_alloc_pmd_pte(dst_mm, dst_addr, src_addr);
+			break;
+		}
 		dst_pmd = mm_alloc_pmd(dst_mm, dst_addr);
 		if (unlikely(!dst_pmd)) {
 			err = -ENOMEM;
