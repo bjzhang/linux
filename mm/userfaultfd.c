@@ -20,6 +20,63 @@
 #include <asm/tlbflush.h>
 #include "internal.h"
 
+static int ymc_atomic_pte(struct mm_struct *dst_mm,
+			  pmd_t *dst_pmd,
+			  struct vm_area_struct *dst_vma,
+			  unsigned long dst_addr,
+			  unsigned long src_addr,
+			  struct page **pagep)
+{
+	struct mem_cgroup *memcg;
+	pte_t _dst_pte, *dst_pte;
+	spinlock_t *ptl;
+	void *page_kaddr;
+	int ret;
+	struct page *page;
+	pgoff_t offset, max_off;
+	struct inode *inode;
+
+	pr_info("%s: dst addr %lx of vma(%px: flags %lx) (pmd %llx@%px)\n",
+		__func__, dst_addr, dst_vma, dst_vma->vm_flags,
+		pmd_val(*dst_pmd), dst_pmd);
+	if (0xa0000000 != dst_addr)
+		return -EINVAL;
+
+	ret = -ENOMEM;
+	page = alloc_page_vma(GFP_HIGHUSER_MOVABLE, dst_vma, dst_addr);
+	if (!page)
+		goto out;
+
+	pr_info("%s: page@%px\n", __func__, page);
+	page_kaddr = kmap_atomic(page);
+	ret = copy_from_user(page_kaddr,
+			     (const void __user *) src_addr,
+			     PAGE_SIZE);
+	kunmap_atomic(page_kaddr);
+
+	/*
+	 * The memory barrier inside __SetPageUptodate makes sure that
+	 * preceeding stores to the page contents become visible before
+	 * the set_pte_at() write.
+	 */
+	__SetPageUptodate(page);
+
+	ret = -ENOMEM;
+	_dst_pte = mk_pte(page, dst_vma->vm_page_prot);
+	if (dst_vma->vm_flags & VM_WRITE)
+		_dst_pte = pte_mkwrite(pte_mkdirty(_dst_pte));
+
+	dst_pte = pte_offset_map(dst_pmd, dst_addr);
+	ret = -EEXIST;
+	pr_info("%s: set pte val %llx@%px\n", __func__,  pte_val(_dst_pte), dst_pte);
+	set_pte_at(dst_mm, dst_addr, dst_pte, _dst_pte);
+
+	/* No need to invalidate - it was non-present before */
+	update_mmu_cache(dst_vma, dst_addr, dst_pte);
+	ret = 0;
+out:
+	return ret;
+}
 static int mcopy_atomic_pte(struct mm_struct *dst_mm,
 			    pmd_t *dst_pmd,
 			    struct vm_area_struct *dst_vma,
@@ -36,6 +93,9 @@ static int mcopy_atomic_pte(struct mm_struct *dst_mm,
 	pgoff_t offset, max_off;
 	struct inode *inode;
 
+	pr_info("%s: dst addr %lx of vma(%px: flags %lx) (pmd %llx@%px)\n",
+		__func__, dst_addr, dst_vma, dst_vma->vm_flags,
+		pmd_val(*dst_pmd), dst_pmd);
 	if (!*pagep) {
 		ret = -ENOMEM;
 		page = alloc_page_vma(GFP_HIGHUSER_MOVABLE, dst_vma, dst_addr);
@@ -122,6 +182,9 @@ static int mfill_zeropage_pte(struct mm_struct *dst_mm,
 	pgoff_t offset, max_off;
 	struct inode *inode;
 
+	pr_info("%s: dst addr %lx of vma(%px: flags %lx) (pmd %llx@%px)\n",
+		__func__, dst_addr, dst_vma, dst_vma->vm_flags,
+		pmd_val(*dst_pmd), dst_pmd);
 	_dst_pte = pte_mkspecial(pfn_pte(my_zero_pfn(dst_addr),
 					 dst_vma->vm_page_prot));
 	dst_pte = pte_offset_map_lock(dst_mm, dst_pmd, dst_addr, &ptl);
@@ -151,6 +214,7 @@ static pmd_t *mm_alloc_pmd(struct mm_struct *mm, unsigned long address)
 	pgd_t *pgd;
 	p4d_t *p4d;
 	pud_t *pud;
+	pmd_t *pmd;
 
 	pgd = pgd_offset(mm, address);
 	p4d = p4d_alloc(mm, pgd, address);
@@ -164,7 +228,12 @@ static pmd_t *mm_alloc_pmd(struct mm_struct *mm, unsigned long address)
 	 * missing, the *pmd may be already established and in
 	 * turn it may also be a trans_huge_pmd.
 	 */
-	return pmd_alloc(mm, pud, address);
+	pmd = pmd_alloc(mm, pud, address);
+	pr_info("%s mm->pgd %llx@%px pgd %llx@%px pud %llx@%px pmd %llx@%px\n",
+		__func__, pgd_val(*mm->pgd), mm->pgd, pgd_val(*pgd), pgd,
+		pud_val(*pud), pud, pmd_val(*pmd), pmd);
+
+	return pmd;
 }
 
 #ifdef CONFIG_HUGETLB_PAGE
@@ -416,7 +485,14 @@ static __always_inline ssize_t mfill_atomic_pte(struct mm_struct *dst_mm,
 	pr_info("%s: dst addr %lx of vma(%px: flags %lx) (pmd %llx@%px)\n",
 		__func__, dst_addr, dst_vma, dst_vma->vm_flags,
 		pmd_val(*dst_pmd), dst_pmd);
-	if (!(dst_vma->vm_flags & VM_SHARED)) {
+	if (dst_vma->vm_flags & 0x10000000) {
+		if (zeropage) {
+			pr_info("%s: Could not handle zero page for %lx\n",
+				__func__, dst_addr);
+		}
+		err = ymc_atomic_pte(dst_mm, dst_pmd, dst_vma,
+				     dst_addr, src_addr, page);
+	} else if (!(dst_vma->vm_flags & VM_SHARED)) {
 		if (!zeropage)
 			err = mcopy_atomic_pte(dst_mm, dst_pmd, dst_vma,
 					       dst_addr, src_addr, page);

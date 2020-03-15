@@ -2302,6 +2302,9 @@ static int shmem_mfill_atomic_pte(struct mm_struct *dst_mm,
 	int ret;
 	pgoff_t offset, max_off;
 
+	pr_info("%s: dst addr %lx of vma(%px: flags %lx) (pmd %llx@%px)\n",
+		__func__, dst_addr, dst_vma, dst_vma->vm_flags,
+		pmd_val(*dst_pmd), dst_pmd);
 	ret = -ENOMEM;
 	if (!shmem_inode_acct_block(inode, 1))
 		goto out;

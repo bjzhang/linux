@@ -4028,6 +4028,9 @@ int __pud_alloc(struct mm_struct *mm, p4d_t *p4d, unsigned long address)
 	if (!new)
 		return -ENOMEM;
 
+	if (0xa0000000 == address)
+		pr_info("%s alloc new pud %px\n", __func__, new);
+
 	smp_wmb(); /* See comment in __pte_alloc */
 
 	spin_lock(&mm->page_table_lock);
@@ -4060,6 +4063,9 @@ int __pmd_alloc(struct mm_struct *mm, pud_t *pud, unsigned long address)
 	pmd_t *new = pmd_alloc_one(mm, address);
 	if (!new)
 		return -ENOMEM;
+
+	if (0xa0000000 == address)
+		pr_info("%s alloc new pmd %px\n", __func__, new);
 
 	smp_wmb(); /* See comment in __pte_alloc */
 

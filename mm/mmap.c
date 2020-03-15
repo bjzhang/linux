@@ -1392,7 +1392,7 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 
 	*populate = 0;
 
-	pr_info("%s: flags: %lx\n", __func__, flags);
+	pr_info("%s: try to map addr %lx with flags %lx\n", __func__, addr, flags);
 	if (!len)
 		return -EINVAL;
 
@@ -1454,9 +1454,10 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 	vm_flags |= calc_vm_prot_bits(prot, pkey) | calc_vm_flag_bits(flags) |
 			mm->def_flags | VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC;
 
-	if (flags & 0x10000000)
+	if (flags & 0x10000000) {
 		vm_flags |= 0x10000000;
-
+		pr_info("%s: try to map addr %lx with flags %lx vm_flags %lx\n", __func__, addr, flags, vm_flags);
+	}
 	if (flags & MAP_LOCKED)
 		if (!can_do_mlock())
 			return -EPERM;
@@ -1578,6 +1579,7 @@ unsigned long ksys_mmap_pgoff(unsigned long addr, unsigned long len,
 	struct file *file = NULL;
 	unsigned long retval;
 
+	pr_info("%s: try to map addr %lx with flags: %lx\n", __func__, addr, flags);
 	if (!(flags & MAP_ANONYMOUS)) {
 		audit_mmap_fd(fd, flags);
 		file = fget(fd);
