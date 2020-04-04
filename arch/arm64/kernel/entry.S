@@ -181,10 +181,14 @@ alternative_cb_end
 	ldr	x19, [tsk, #TSK_TI_FLAGS]	// since we can unmask debug
 	disable_step_tsk x19, x20		// exceptions when scheduling.
 
+	/* Speculative Store Bypass Disable */
 	apply_ssbd 1, x22, x23
 
 	.else
 	add	x21, sp, #S_FRAME_SIZE
+	/*
+	 * Read the other part the user ds, kernel ds.
+	 */
 	get_current_task tsk
 	/* Save the task's original addr_limit and set USER_DS */
 	ldr	x20, [tsk, #TSK_TI_ADDR_LIMIT]
@@ -195,6 +199,10 @@ alternative_cb_end
 	.endif /* \el == 0 */
 	mrs	x22, elr_el1
 	mrs	x23, spsr_el1
+	/*
+	 * If exeption taken from EL0: Save the sp of el0.
+	 * If exeption taken from EL1: Save the sp after add sizeof(pt_regs).
+	 */
 	stp	lr, x21, [sp, #S_LR]
 
 	/*
@@ -207,6 +215,10 @@ alternative_cb_end
 	.else
 	stp	x29, x22, [sp, #S_STACKFRAME]
 	.endif
+	/*
+	 * BV: Add stack pointer with the offset of stace frame of struct
+	 * pt_regs. After this, x29(AKA FP) is the new frame pointer.
+	 */
 	add	x29, sp, #S_STACKFRAME
 
 #ifdef CONFIG_ARM64_SW_TTBR0_PAN
