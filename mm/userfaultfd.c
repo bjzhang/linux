@@ -640,7 +640,7 @@ retry:
 
 		if (dst_vma->vm_flags & 0x10000000) {
 			ymc_alloc_pmd_pte(dst_mm, dst_addr, src_addr);
-			break;
+			goto ymc_cont;
 		}
 		dst_pmd = mm_alloc_pmd(dst_mm, dst_addr);
 		if (unlikely(!dst_pmd)) {
@@ -673,6 +673,7 @@ retry:
 
 		err = mfill_atomic_pte(dst_mm, dst_pmd, dst_vma, dst_addr,
 				       src_addr, &page, zeropage);
+ymc_cont:
 		cond_resched();
 
 		if (unlikely(err == -ENOENT)) {
