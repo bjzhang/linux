@@ -102,6 +102,7 @@ static int mcopy_atomic_pte(struct mm_struct *dst_mm,
 		if (!page)
 			goto out;
 
+		pr_info("allocate page: %px\n", page);
 		page_kaddr = kmap_atomic(page);
 		ret = copy_from_user(page_kaddr,
 				     (const void __user *) src_addr,
@@ -131,7 +132,12 @@ static int mcopy_atomic_pte(struct mm_struct *dst_mm,
 	if (mem_cgroup_try_charge(page, dst_mm, GFP_KERNEL, &memcg, false))
 		goto out_release;
 
+	pr_info("VMEMMAP_START: %lx\n", VMEMMAP_START);
+	pr_info("memstart_addr: %llx\n", memstart_addr);
+	pr_info("vmemmap: %px\n", ((struct page *)VMEMMAP_START - (memstart_addr >> PAGE_SHIFT)));
+	pr_info("page_to_pfn: %lx\n", (unsigned long)(page - vmemmap));
 	_dst_pte = mk_pte(page, dst_vma->vm_page_prot);
+	pr_info("_dst_pte: %llx, page: %px, vm_page_prot: %llx\n", pte_val(_dst_pte), page, pgprot_val(dst_vma->vm_page_prot));
 	if (dst_vma->vm_flags & VM_WRITE)
 		_dst_pte = pte_mkwrite(pte_mkdirty(_dst_pte));
 
@@ -155,6 +161,8 @@ static int mcopy_atomic_pte(struct mm_struct *dst_mm,
 	lru_cache_add_active_or_unevictable(page, dst_vma);
 
 	set_pte_at(dst_mm, dst_addr, dst_pte, _dst_pte);
+	pr_info("set_pte_at(dst_mm<%px>, dst_addr<%lx>, (pte %llx@%px))",
+		dst_mm, dst_addr, pte_val(*dst_pte), dst_pte);
 
 	/* No need to invalidate - it was non-present before */
 	update_mmu_cache(dst_vma, dst_addr, dst_pte);
@@ -571,6 +579,8 @@ static __always_inline ssize_t __mcopy_atomic(struct mm_struct *dst_mm,
 	src_addr = src_start;
 	dst_addr = dst_start;
 	copied = 0;
+	pr_info("__mcopy_atomic src_addr<%lx>, dst_addr<%lx> and opied<%lx>\n",
+		src_addr, dst_addr, copied);
 	page = NULL;
 retry:
 	down_read(&dst_mm->mmap_sem);
@@ -674,6 +684,7 @@ retry:
 		err = mfill_atomic_pte(dst_mm, dst_pmd, dst_vma, dst_addr,
 				       src_addr, &page, zeropage);
 ymc_cont:
+		pr_info("after fill page table\n");
 		cond_resched();
 
 		if (unlikely(err == -ENOENT)) {
@@ -699,6 +710,9 @@ ymc_cont:
 			dst_addr += PAGE_SIZE;
 			src_addr += PAGE_SIZE;
 			copied += PAGE_SIZE;
+			pr_info("fault handle ok, update src_addr<%lx>, "
+				"dst_addr<%lx> and copied<%lx>\n", src_addr,
+				dst_addr, copied);
 
 			if (fatal_signal_pending(current))
 				err = -EINTR;
