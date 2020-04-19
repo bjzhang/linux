@@ -132,6 +132,7 @@ static int mcopy_atomic_pte(struct mm_struct *dst_mm,
 	if (mem_cgroup_try_charge(page, dst_mm, GFP_KERNEL, &memcg, false))
 		goto out_release;
 
+	//TODO: where does the vm_page_prot come from?
 	pr_info("VMEMMAP_START: %lx\n", VMEMMAP_START);
 	pr_info("memstart_addr: %llx\n", memstart_addr);
 	pr_info("vmemmap: %px\n", ((struct page *)VMEMMAP_START - (memstart_addr >> PAGE_SHIFT)));
@@ -155,6 +156,7 @@ static int mcopy_atomic_pte(struct mm_struct *dst_mm,
 	if (!pte_none(*dst_pte))
 		goto out_release_uncharge_unlock;
 
+	//TODO: what does it mean?
 	inc_mm_counter(dst_mm, MM_ANONPAGES);
 	page_add_new_anon_rmap(page, dst_vma, dst_addr, false);
 	mem_cgroup_commit_charge(page, memcg, false, false);
@@ -501,6 +503,7 @@ static __always_inline ssize_t mfill_atomic_pte(struct mm_struct *dst_mm,
 		err = ymc_atomic_pte(dst_mm, dst_pmd, dst_vma,
 				     dst_addr, src_addr, page);
 	} else if (!(dst_vma->vm_flags & VM_SHARED)) {
+		//TODO when will page is NULL. Should I deal with zero page?
 		if (!zeropage)
 			err = mcopy_atomic_pte(dst_mm, dst_pmd, dst_vma,
 					       dst_addr, src_addr, page);

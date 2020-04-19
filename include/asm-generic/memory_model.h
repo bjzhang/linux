@@ -48,6 +48,7 @@
 	 __pgdat->node_start_pfn;					\
 })
 
+//TODO what does CONFIG_SPARSEMEM_VMEMMAP mean?
 #elif defined(CONFIG_SPARSEMEM_VMEMMAP)
 
 /* memmap is virtually contiguous.  */
