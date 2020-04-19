@@ -77,6 +77,7 @@ static int ymc_atomic_pte(struct mm_struct *dst_mm,
 out:
 	return ret;
 }
+
 static int mcopy_atomic_pte(struct mm_struct *dst_mm,
 			    pmd_t *dst_pmd,
 			    struct vm_area_struct *dst_vma,
@@ -523,14 +524,18 @@ static __always_inline ssize_t mfill_atomic_pte(struct mm_struct *dst_mm,
 	return err;
 }
 
-static void ymc_alloc_pmd_pte(struct mm_struct *dst_mm,
-			      unsigned long dst_addr, unsigned long src_addr)
+static ssize_t ymc_alloc_pmd_pte(struct mm_struct *dst_mm,
+				 unsigned long dst_addr, unsigned long src_addr)
 {
 	struct vm_area_struct *dst_vma;
 	struct page *page;
 	void *page_kaddr;
 	pgd_t *pgd;
 	void *page1, *page2;
+	int ret;
+	pud_t *pud;
+	pmd_t *pmd;
+	pte_t _dst_pte, *dst_pte;
 
 	dst_vma = find_vma(dst_mm, dst_addr);
 	if (!dst_vma)
@@ -542,17 +547,37 @@ static void ymc_alloc_pmd_pte(struct mm_struct *dst_mm,
 
 	pr_info("%s: page@%px\n", __func__, page);
 	page_kaddr = kmap_atomic(page);
-	copy_from_user(page_kaddr, (const void __user *) src_addr, PAGE_SIZE);
+	ret = copy_from_user(page_kaddr, (const void __user *) src_addr, PAGE_SIZE);
 	kunmap_atomic(page_kaddr);
 
 	pgd = dst_mm->pgd;
 	pr_info("pgd: %px\n", pgd);
-	page1 = __get_free_page(GFP_KERNEL | __GFP_ZERO);
-	page2 = __get_free_page(GFP_KERNEL | __GFP_ZERO);
-	pr_info("page allocated for page table: %px, %px\n", page1, page2);
-	while(1);
+	pgd = pgd_offset(dst_mm, dst_addr);
+	pr_info("pgd: %px\n", pgd);
+	pud = pud_alloc(dst_mm, pgd, dst_addr);
+	pr_info("pud: %px\n", pud);
+//	page1 = __get_free_page(GFP_KERNEL | __GFP_ZERO);
+//	page2 = __get_free_page(GFP_KERNEL | __GFP_ZERO);
+//	pr_info("page allocated for page table: %px, %px\n", page1, page2);
+	pmd = pmd_alloc(dst_mm, pud, dst_addr);
+	pr_info("pmd: %px\n", pmd);
+	pr_info("VMEMMAP_START: %lx\n", VMEMMAP_START);
+	pr_info("memstart_addr: %llx\n", memstart_addr);
+	pr_info("vmemmap: %px\n", ((struct page *)VMEMMAP_START - (memstart_addr >> PAGE_SHIFT)));
+	pr_info("page_to_pfn: %lx\n", (unsigned long)(page - vmemmap));
+	_dst_pte = mk_pte(page, dst_vma->vm_page_prot);
+	pr_info("_dst_pte: %llx, page: %px, vm_page_prot: %llx\n", pte_val(_dst_pte), page, pgprot_val(dst_vma->vm_page_prot));
+	if (dst_vma->vm_flags & VM_WRITE) {
+		pr_info("vm flags with VM_WRITE\n");
+		_dst_pte = pte_mkwrite(pte_mkdirty(_dst_pte));
+	}
+	dst_pte = pte_offset_map(pmd, dst_addr);
+	pr_info("dst_pte: %px\n", dst_pte);
+	set_pte_at(dst_mm, dst_addr, dst_pte, _dst_pte);
+
+	return 0;
 out:
-	return;
+	return -EINVAL;
 }
 
 static __always_inline ssize_t __mcopy_atomic(struct mm_struct *dst_mm,
@@ -652,7 +677,8 @@ retry:
 		BUG_ON(dst_addr >= dst_start + len);
 
 		if (dst_vma->vm_flags & 0x10000000) {
-			ymc_alloc_pmd_pte(dst_mm, dst_addr, src_addr);
+			pr_info("fill page table start\n");
+			err = ymc_alloc_pmd_pte(dst_mm, dst_addr, src_addr);
 			goto ymc_cont;
 		}
 		dst_pmd = mm_alloc_pmd(dst_mm, dst_addr);
