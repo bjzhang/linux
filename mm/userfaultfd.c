@@ -554,6 +554,8 @@ static ssize_t ymc_alloc_pmd_pte(struct mm_struct *dst_mm,
 	pr_info("pgd: %px\n", pgd);
 	pgd = pgd_offset(dst_mm, dst_addr);
 	pr_info("pgd: %px\n", pgd);
+	pgd += (dst_addr >> 42) & ((1 << (48 - 42)) - 1);
+	pr_info("pgd: %px\n", pgd);
 	pud = pud_alloc(dst_mm, pgd, dst_addr);
 	pr_info("pud: %px\n", pud);
 //	page1 = __get_free_page(GFP_KERNEL | __GFP_ZERO);
@@ -573,6 +575,9 @@ static ssize_t ymc_alloc_pmd_pte(struct mm_struct *dst_mm,
 	}
 	dst_pte = pte_offset_map(pmd, dst_addr);
 	pr_info("dst_pte: %px\n", dst_pte);
+	inc_mm_counter(dst_mm, MM_ANONPAGES);
+	page_add_new_anon_rmap(page, dst_vma, dst_addr, false);
+	//lru_cache_add_active_or_unevictable(page, dst_vma);
 	set_pte_at(dst_mm, dst_addr, dst_pte, _dst_pte);
 
 	return 0;
