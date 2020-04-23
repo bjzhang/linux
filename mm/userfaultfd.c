@@ -557,26 +557,6 @@ static ssize_t ymc_alloc_pmd_pte(struct mm_struct *dst_mm,
 	pr_info("page allocated for page table: %px, %px\n", page1, page2);
 	pr_info("page_to_pfn: %lx\n", (unsigned long)(page - vmemmap));
 	pr_info("vm_page_prot: %llx\n", pgprot_val(dst_vma->vm_page_prot));
-
-	pgd = pgd_offset(dst_mm, dst_addr);
-	pr_info("pgd: %px\n", pgd);
-	pgd += (dst_addr >> 42) & ((1 << (48 - 42)) - 1);
-	pr_info("pgd: %px\n", pgd);
-	pud = pud_alloc(dst_mm, pgd, dst_addr);
-	pr_info("pud: %px\n", pud);
-	pmd = pmd_alloc(dst_mm, pud, dst_addr);
-	pr_info("pmd: %px\n", pmd);
-	_dst_pte = mk_pte(page, dst_vma->vm_page_prot);
-	pr_info("_dst_pte: %llx, page: %px, vm_page_prot: %llx\n", pte_val(_dst_pte), page, pgprot_val(dst_vma->vm_page_prot));
-	if (dst_vma->vm_flags & VM_WRITE) {
-		pr_info("vm flags with VM_WRITE\n");
-		_dst_pte = pte_mkwrite(pte_mkdirty(_dst_pte));
-	}
-	pr_info("_dst_pte: %llx\n", pte_val(_dst_pte));
-	dst_pte = pte_offset_map(pmd, dst_addr);
-	pr_info("Will set_pte_at(dst_mm<%px>, dst_addr<%lx>, (pte %llx@%px))\n",
-		dst_mm, dst_addr, pte_val(*dst_pte), dst_pte);
-
 	while(1);
 	return 0;
 out:
