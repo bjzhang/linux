@@ -2316,8 +2316,6 @@ static vm_fault_t wp_page_copy(struct vm_fault *vmf)
 		 * new page to be mapped directly into the secondary page table.
 		 */
 		set_pte_at_notify(mm, vmf->address, vmf->pte, entry);
-		pr_info("wp_page_copy: pte<0x%llx> at pte<0x%px>\n",
-			pte_val(*vmf->pte), vmf->pte);
 		update_mmu_cache(vma, vmf->address, vmf->pte);
 		if (old_page) {
 			/*
@@ -2991,7 +2989,6 @@ static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
 	lru_cache_add_active_or_unevictable(page, vma);
 setpte:
 	set_pte_at(vma->vm_mm, vmf->address, vmf->pte, entry);
-	pr_info("%s: pte<0x%llx> at pte<0x%px> at address<%lx>\n", __FUNCTION__, pte_val(*vmf->pte), vmf->pte, vmf->address);
 
 	/* No need to invalidate - it was non-present before */
 	update_mmu_cache(vma, vmf->address, vmf->pte);
@@ -3807,7 +3804,6 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 	}
 
 	if (!vmf->pte) {
-		pr_info("read fault 0x%lx\n", vmf->address);
 		if (vma_is_anonymous(vmf->vma))
 			return do_anonymous_page(vmf);
 		else
@@ -3826,17 +3822,13 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 	if (unlikely(!pte_same(*vmf->pte, entry)))
 		goto unlock;
 	if (vmf->flags & FAULT_FLAG_WRITE) {
-		if (!pte_write(entry)) {
-			pr_info("cow fault: 0x%lx\n", vmf->address);
+		if (!pte_write(entry))
 			return do_wp_page(vmf);
-		}
 		entry = pte_mkdirty(entry);
 	}
-	pr_info("fault: 0x%lx\n", vmf->address);
 	entry = pte_mkyoung(entry);
 	if (ptep_set_access_flags(vmf->vma, vmf->address, vmf->pte, entry,
 				vmf->flags & FAULT_FLAG_WRITE)) {
-		pr_info("%s: pte<0x%llx> at pte<0x%px> at address<%lx>\n", __FUNCTION__, pte_val(*vmf->pte), vmf->pte, vmf->address);
 		update_mmu_cache(vmf->vma, vmf->address, vmf->pte);
 	} else {
 		/*
@@ -4028,9 +4020,6 @@ int __pud_alloc(struct mm_struct *mm, p4d_t *p4d, unsigned long address)
 	if (!new)
 		return -ENOMEM;
 
-	if (0xa0000000 == address)
-		pr_info("%s alloc new pud %px\n", __func__, new);
-
 	smp_wmb(); /* See comment in __pte_alloc */
 
 	spin_lock(&mm->page_table_lock);
@@ -4063,9 +4052,6 @@ int __pmd_alloc(struct mm_struct *mm, pud_t *pud, unsigned long address)
 	pmd_t *new = pmd_alloc_one(mm, address);
 	if (!new)
 		return -ENOMEM;
-
-	if (0xa0000000 == address)
-		pr_info("%s alloc new pmd %px\n", __func__, new);
 
 	smp_wmb(); /* See comment in __pte_alloc */
 

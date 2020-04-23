@@ -1392,7 +1392,6 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 
 	*populate = 0;
 
-	pr_info("%s: try to map addr %lx with flags %lx\n", __func__, addr, flags);
 	if (!len)
 		return -EINVAL;
 
@@ -1563,7 +1562,6 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 			vm_flags |= VM_NORESERVE;
 	}
 
-	pr_info("%s: try to map addr %lx with mmap_region and vm_flags %lx\n", __func__, addr, vm_flags);
 	addr = mmap_region(file, addr, len, vm_flags, pgoff, uf);
 	if (!IS_ERR_VALUE(addr) &&
 	    ((vm_flags & VM_LOCKED) ||
@@ -1579,7 +1577,6 @@ unsigned long ksys_mmap_pgoff(unsigned long addr, unsigned long len,
 	struct file *file = NULL;
 	unsigned long retval;
 
-	pr_info("%s: try to map addr %lx with flags: %lx\n", __func__, addr, flags);
 	if (!(flags & MAP_ANONYMOUS)) {
 		audit_mmap_fd(fd, flags);
 		file = fget(fd);
@@ -1773,7 +1770,6 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 	vma->vm_flags = vm_flags;
 	vma->vm_page_prot = vm_get_page_prot(vm_flags);
 	vma->vm_pgoff = pgoff;
-	pr_info("%s: try to map addr %lx into vma %px\n", __func__, addr, vma);
 
 	if (file) {
 		if (vm_flags & VM_DENYWRITE) {
@@ -1813,7 +1809,6 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 		if (error)
 			goto free_vma;
 	} else {
-		pr_info("%s: try to map addr %lx into vma %px through vma_set_anonymous\n", __func__, addr, vma);
 		vma_set_anonymous(vma);
 	}
 
