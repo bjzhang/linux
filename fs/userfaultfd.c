@@ -1222,10 +1222,12 @@ static void __wake_userfault(struct userfaultfd_ctx *ctx,
 	spin_lock(&ctx->fault_pending_wqh.lock);
 	/* wake all in the range and autoremove */
 	if (waitqueue_active(&ctx->fault_pending_wqh)) {
+		pr_info("wake userfault to fault_pending_wqh\n");
 		__wake_up_locked_key(&ctx->fault_pending_wqh, TASK_NORMAL,
 				     range);
 	}
 	if (waitqueue_active(&ctx->fault_wqh)) {
+		pr_info("wake userfault to fault_wqh\n");
 		__wake_up(&ctx->fault_wqh, TASK_NORMAL, 1, range);
 	}
 	spin_unlock(&ctx->fault_pending_wqh.lock);
@@ -1739,6 +1741,7 @@ static int userfaultfd_copy(struct userfaultfd_ctx *ctx,
 		wake_userfault(ctx, &range);
 	}
 	ret = range.len == uffdio_copy.len ? 0 : -EAGAIN;
+	pr_info("userfaultfd_copy ret: %d\n", ret);
 out:
 	return ret;
 }
