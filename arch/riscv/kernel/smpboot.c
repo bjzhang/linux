@@ -107,29 +107,10 @@ void __init setup_smp(void)
 
 static int start_secondary_cpu(int cpu, struct task_struct *tidle)
 {
-	pr_info("%s\n", __func__);
 	if (cpu_ops[cpu]->cpu_start)
 		return cpu_ops[cpu]->cpu_start(cpu, tidle);
 
-	pr_info("%s\n", __func__);
 	return -EOPNOTSUPP;
-}
-
-static void *rtt_image_vaddr;
-static void *rtt_start_vaddr;
-void copy_rtt(void)
-{
-#define RTT_IMAGE_ADDR	(0x90100000)
-#define RTT_SIZE	(0x100000)
-#define RTT_START_ADDR	(0x90200000)
-	if (!rtt_image_vaddr) {
-		rtt_image_vaddr = memremap(RTT_IMAGE_ADDR, RTT_SIZE, MEMREMAP_WB);
-		pr_info("Allocated reserved memory, rt-thread image vaddr: 0x%0llX, paddr: 0x%0llX\n", (u64)rtt_image_vaddr, (u64)RTT_IMAGE_ADDR);
-		rtt_start_vaddr = memremap(RTT_START_ADDR, RTT_SIZE, MEMREMAP_WB);
-		pr_info("Allocated reserved memory, rt-thread start vaddr: 0x%0llX, paddr: 0x%0llX\n", (u64)rtt_start_vaddr, (u64)RTT_START_ADDR);
-	}
-	memcpy(rtt_start_vaddr,  rtt_image_vaddr, RTT_SIZE);
-	pr_info("Copy rt-thread done\n");
 }
 
 int __cpu_up(unsigned int cpu, struct task_struct *tidle)
@@ -137,10 +118,8 @@ int __cpu_up(unsigned int cpu, struct task_struct *tidle)
 	int ret = 0;
 	tidle->thread_info.cpu = cpu;
 
-	copy_rtt();
 	ret = start_secondary_cpu(cpu, tidle);
 	if (!ret) {
-		pr_info("CPU%u: online\n", cpu);
 		wait_for_completion_timeout(&cpu_running,
 					    msecs_to_jiffies(1000));
 
