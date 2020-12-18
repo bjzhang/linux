@@ -61,6 +61,7 @@ enum sbi_ext_hsm_fid {
 	SBI_EXT_HSM_HART_START = 0,
 	SBI_EXT_HSM_HART_STOP,
 	SBI_EXT_HSM_HART_STATUS,
+	SBI_EXT_HSM_HART_STOP_REMOTE = 0x1001,
 };
 
 enum sbi_hsm_hart_status {
